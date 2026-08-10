@@ -1,0 +1,30 @@
+# Normalisiere Zeilenenden im Repository auf LF; Auschecken plattformabhängig.
+* text=auto eol=lf
+
+# Reproduzierbare Builds: diese Dateien müssen bitgenau LF sein.
+*.java   text eol=lf
+*.kt     text eol=lf
+*.kts    text eol=lf
+*.json   text eol=lf
+*.toml   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.md     text eol=lf
+*.properties text eol=lf
+*.accesswidener text eol=lf
+gradlew  text eol=lf
+*.sh     text eol=lf
+
+# Windows-Skripte brauchen CRLF.
+*.bat    text eol=crlf
+gradlew.bat text eol=crlf
+
+# Binärdateien nie anfassen.
+*.jar    binary
+*.png    binary
+*.ogg    binary
+*.zip    binary
+*.ico    binary
+
+# Linguist: Dokumentation nicht als Projektsprache zählen.
+docs/** linguist-documentation

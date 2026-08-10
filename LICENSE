@@ -1,0 +1,109 @@
+FabricMultiLoader — Proprietary Source-Available License
+All Rights Reserved
+
+Copyright (c) 2026 CptGummiball <treeman1992@outlook.de>
+
+This software, its source code, its build tooling and its accompanying
+documentation (together, "the Work") are made publicly readable for the sole
+purposes of review, evaluation and discussion.
+
+THE WORK IS NOT OPEN-SOURCE SOFTWARE AND NOT FREE SOFTWARE.
+No rights are granted to you except those expressly stated in Section 1.
+
+
+1. WHAT YOU MAY DO
+
+   a) View and read the Work.
+   b) Clone or download the Work for the sole purpose of private review.
+   c) Quote short excerpts of the Work for commentary, review, teaching or
+      discussion, provided that the copyright holder and the source are
+      attributed.
+
+
+2. WHAT YOU MAY NOT DO WITHOUT PRIOR WRITTEN PERMISSION
+
+   a) Copy, reproduce, mirror or republish the Work or any substantial part of
+      it, in whole or in part, in any medium or form.
+   b) Redistribute the Work or any modified version of it, whether standalone,
+      bundled, embedded or nested inside another artifact.
+   c) Create derivative works, forks intended for distribution, ports,
+      translations or reimplementations that substantially reproduce the Work
+      or its design.
+   d) Use the Work or any part of it in another project, product or service,
+      whether commercial or non-commercial, public or private.
+   e) Use the Work to train, fine-tune or evaluate machine-learning models.
+   f) Remove, obscure or alter this license, the copyright notice or any
+      authorship information.
+   g) Sublicense, sell, rent, lease or otherwise transfer any rights in the
+      Work.
+
+   Publishing a public fork on a code-hosting platform constitutes
+   redistribution under 2 b) and is therefore not permitted. Temporary forks
+   created solely to prepare a contribution under Section 3 are permitted.
+
+
+3. CONTRIBUTIONS
+
+   Contributions (issues, pull requests, patches, documentation) are welcome.
+   By submitting a contribution you confirm that you are entitled to do so and
+   you grant the copyright holder a perpetual, worldwide, irrevocable,
+   royalty-free right to use, modify, publish and relicense your contribution
+   as part of the Work, including under a future license as described in
+   Section 4. You retain the copyright to your contribution.
+
+
+4. INTENDED FUTURE LICENSING
+
+   This restrictive license is a temporary measure for the period of initial
+   development. The copyright holder intends to relicense the Work under a
+   permissive open-source license — Apache-2.0 is the current intent — before
+   the Work is made available for productive use by third parties.
+
+   This intent is a statement of direction, not a binding commitment, and
+   creates no rights. Any change of license will be published in this file and
+   in the project changelog.
+
+
+5. NO WARRANTY
+
+   THE WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+   IN CONNECTION WITH THE WORK OR THE USE OR OTHER DEALINGS IN THE WORK.
+
+
+6. TERMINATION
+
+   Any breach of this license terminates the permissions granted in Section 1
+   immediately and automatically. Upon termination you must delete all copies
+   of the Work in your possession.
+
+
+7. THIRD-PARTY NAMES AND MATERIAL
+
+   Minecraft is a trademark of Mojang Synergies AB. Fabric, Fabric Loader,
+   Fabric API, Yarn and Fabric Loom are projects of the FabricMC organisation.
+   Gradle is a trademark of Gradle Inc. This project is not affiliated with,
+   endorsed by or sponsored by any of them. All referenced trademarks belong to
+   their respective owners and are used for identification purposes only.
+
+   This license applies to the Work itself. It does not apply to third-party
+   dependencies, which remain under their own licenses.
+
+
+8. PERMISSIONS AND CONTACT
+
+   For any use beyond Section 1 — including redistribution, embedding in a
+   published mod, or building a product on top of the Work — please ask.
+   Permission is generally intended to be granted once the Work reaches a
+   usable state (see Section 4).
+
+   Contact: treeman1992@outlook.de
+   Project: https://github.com/CptGummiball/fabricmultiloader
+
+
+NOTE: This document is a plain-language proprietary notice written by the
+project author. It is not legal advice and has not been reviewed by a lawyer.
+Have it reviewed before relying on it in a commercial context.
