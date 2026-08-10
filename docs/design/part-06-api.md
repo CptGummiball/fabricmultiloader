@@ -1,58 +1,58 @@
 # 18. Common API
 
-## 18.1 Designprinzipien
+## 18.1 Design principles
 
-| Prinzip | Konsequenz |
+| Principle | Consequence |
 |---|---|
-| **P1 — Keine Minecraft-Typen in der Common-API** | Jede Signatur benutzt nur JDK-Typen, `format`-Typen und eigene, opake Referenztypen (`PlayerRef`, `WorldRef`, `ItemStackRef`). Nur so ist der Container binärkompatibel über alle MC-Versionen. |
-| **P2 — Deklarativ statt imperativ** | Inhalte werden als *Spezifikation* (`ItemSpec`) beschrieben, nicht als MC-Objekt gebaut. Der Adapter übersetzt die Spezifikation in die versionsspezifische Konstruktion. |
-| **P3 — Handles statt Objekte** | Registrierung liefert einen `ItemHandle`, nicht ein `Item`. Der Handle ist über Versionen stabil und bietet `unwrap(Class)` als Escape Hatch. |
-| **P4 — Escape Hatch statt Vollabstraktion** | Was nicht abstrahierbar ist, wird nicht schlecht abstrahiert, sondern über `Services` (typisierte, eigene Schnittstellen) und `Capabilities` (Feature-Gates) sauber in den Version-Layer verschoben. |
-| **P5 — Java 8, keine Records, keine `sealed`** | Binärkompatibilität ab MC 1.16.5; Builder-Pattern statt Records. |
-| **P6 — Additive Evolution** | Interfaces, die Modautoren implementieren, erhalten ausschließlich `default`-Methoden hinzu. Interfaces, die das Framework implementiert, dürfen wachsen. Getrennt markiert durch `@ImplementedByFramework` / `@ImplementedByMod`. |
-| **P7 — Kein DI-Framework** | Ein Service-Locator (`ServiceRegistry`) mit 4 Methoden ersetzt Guice/Dagger. Begründung: kein Reflection-Scan, kein Startzeit-Overhead, keine zusätzliche Abhängigkeit im Container, triviale Debuggability. |
+| **P1 — No Minecraft types in the common API** | Every signature uses only JDK types, `format` types and our own opaque reference types (`PlayerRef`, `WorldRef`, `ItemStackRef`). That is the only way the container can stay binary-compatible across all MC versions. |
+| **P2 — Declarative instead of imperative** | Content is described as a *specification* (`ItemSpec`), not built as an MC object. The adapter translates the specification into the version-specific construction. |
+| **P3 — Handles instead of objects** | Registration returns an `ItemHandle`, not an `Item`. The handle is stable across versions and offers `unwrap(Class)` as an escape hatch. |
+| **P4 — Escape hatch instead of total abstraction** | What cannot be abstracted is not abstracted badly; it is moved cleanly into the version layer via `Services` (typed, user-defined interfaces) and `Capabilities` (feature gates). |
+| **P5 — Java 8, no records, no `sealed`** | Binary compatibility from MC 1.16.5 onwards; builder pattern instead of records. |
+| **P6 — Additive evolution** | Interfaces implemented by mod authors only ever gain `default` methods. Interfaces implemented by the framework may grow. Marked separately with `@ImplementedByFramework` / `@ImplementedByMod`. |
+| **P7 — No DI framework** | A service locator (`ServiceRegistry`) with four methods replaces Guice/Dagger. Rationale: no reflection scan, no startup overhead, no extra dependency in the container, trivial debuggability. |
 
-## 18.2 Paketübersicht
+## 18.2 Package overview
 
-| Package | Inhalt |
+| Package | Content |
 |---|---|
-| `dev.fabricmultiloader.api` | Entrypoint-Interfaces, `ModContext`, `Id`, `Side`, `ModLogger`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader` (statischer Zugang) |
+| `dev.fabricmultiloader.api` | Entrypoint interfaces, `ModContext`, `Id`, `Side`, `ModLogger`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader` (static access) |
 | `dev.fabricmultiloader.api.platform` | `Platform`, `PlatformFactory`, `PlatformInfo`, `PreLaunchContext`, `CrashContext` |
 | `dev.fabricmultiloader.api.registry` | `Registries`, `ItemSpec`, `BlockSpec`, `SoundSpec`, `ItemGroupSpec`, `*Handle`, `Rarity`, `ToolTier` |
 | `dev.fabricmultiloader.api.net` | `Networking`, `ChannelSpec`, `PayloadCodec`, `ByteSink`, `ByteSource`, `ChannelHandle`, `C2SReceiver`, `S2CReceiver` |
 | `dev.fabricmultiloader.api.command` | `Commands`, `CommandSpec`, `Arg`, `CommandInvocation`, `CommandSender`, `Permission` |
-| `dev.fabricmultiloader.api.event` | `Events`, `Subscription`, `LifecyclePhase`, Event-Interfaces |
+| `dev.fabricmultiloader.api.event` | `Events`, `Subscription`, `LifecyclePhase`, event interfaces |
 | `dev.fabricmultiloader.api.ref` | `PlayerRef`, `WorldRef`, `ItemStackRef`, `BlockPosRef`, `Unwrappable` |
-| `dev.fabricmultiloader.api.config` | `ConfigHandle`, `ConfigCodec` (JSON über `format`-Parser) |
+| `dev.fabricmultiloader.api.config` | `ConfigHandle`, `ConfigCodec` (JSON via the `format` parser) |
 | `dev.fabricmultiloader.api.resource` | `ResourceReloadListener`, `PackHandle` |
 
-## 18.3 Entrypoint-Interfaces
+## 18.3 Entrypoint interfaces
 
 ```java
 package dev.fabricmultiloader.api;
 
-/** Gemeinsamer Einstiegspunkt. Läuft in der Fabric-'main'-Phase, auf Client UND Server. */
+/** Shared entry point. Runs in Fabric's 'main' phase, on both client AND server. */
 @ImplementedByMod
 public interface UniversalMod {
     void onInitialize(ModContext ctx);
 }
 
-/** Nur physischer Client. Läuft in der Fabric-'client'-Phase, nach onInitialize. */
+/** Physical client only. Runs in Fabric's 'client' phase, after onInitialize. */
 @ImplementedByMod
 public interface UniversalClientMod {
     void onInitializeClient(ModContext ctx);
 }
 
-/** Nur dedizierter Server. Läuft in der Fabric-'server'-Phase, nach onInitialize. */
+/** Dedicated server only. Runs in Fabric's 'server' phase, after onInitialize. */
 @ImplementedByMod
 public interface UniversalServerMod {
     void onInitializeServer(ModContext ctx);
 }
 
 /**
- * Optional: läuft in der Fabric-'preLaunch'-Phase, VOR dem Laden von Minecraft-Klassen.
- * Darf keine Registry-, Event- oder Networking-Aufrufe machen (IllegalStateException).
- * Gedacht für Config-Laden und frühe Diagnose.
+ * Optional: runs in Fabric's 'preLaunch' phase, BEFORE Minecraft classes are loaded.
+ * Must not make registry, event or networking calls (IllegalStateException).
+ * Intended for loading config and early diagnostics.
  */
 @ImplementedByMod
 public interface UniversalPreLaunch {
@@ -60,11 +60,11 @@ public interface UniversalPreLaunch {
 }
 ```
 
-Registrierung erfolgt **nicht** über `fabric.mod.json`, sondern über die Omni-Manifest-Entrypoints, die entweder
-in der Gradle-DSL deklariert oder vom Annotation Processor aus `@UniversalEntrypoint` abgeleitet werden
-(Kapitel 19.7). Damit ist die Registrierung versionsunabhängig und für alle Payloads identisch.
+Registration happens **not** through `fabric.mod.json` but through the Omni manifest entrypoints, which are either
+declared in the Gradle DSL or derived by the annotation processor from `@UniversalEntrypoint` (chapter 19.7).
+Registration is therefore version-independent and identical for all payloads.
 
-## 18.4 `ModContext` — vollständige Definition
+## 18.4 `ModContext` — complete definition
 
 ```java
 package dev.fabricmultiloader.api;
@@ -82,42 +82,41 @@ import java.util.Optional;
 @ImplementedByFramework
 public interface ModContext {
 
-    // ---- Identität -------------------------------------------------------
+    // ---- identity ---------------------------------------------------------
     String modId();
     SemVer modVersion();
     String displayName();
 
-    // ---- Umgebung --------------------------------------------------------
+    // ---- environment ------------------------------------------------------
     PlatformInfo platform();
-    Side side();                                  // CLIENT | SERVER (physisch)
+    Side side();                                  // CLIENT | SERVER (physical)
     boolean isDevelopment();
 
-    // ---- Infrastruktur ---------------------------------------------------
+    // ---- infrastructure ---------------------------------------------------
     ModLogger log();
     Path gameDir();
     Path configDir();                             // <gameDir>/config
-    Path modConfigDir();                          // <gameDir>/config/<modId>, wird angelegt
+    Path modConfigDir();                          // <gameDir>/config/<modId>, created on demand
 
-    // ---- Subsysteme ------------------------------------------------------
+    // ---- subsystems -------------------------------------------------------
     Registries registries();
     Networking networking();
     Commands commands();
     Events events();
     ServiceRegistry services();
 
-    // ---- Fähigkeiten und Fremdmods --------------------------------------
+    // ---- capabilities and foreign mods ------------------------------------
     <T> Optional<T> capability(Capability<T> capability);
     boolean has(Capability<?> capability);
     boolean isModLoaded(String modId);
     Optional<SemVer> modVersionOf(String modId);
 
-    // ---- Lifecycle-Zustand ----------------------------------------------
+    // ---- lifecycle state --------------------------------------------------
     LifecyclePhase phase();
 }
 ```
 
-`ModContext` ist ein Framework-Interface (P6): Es darf zwischen Minor-Versionen wachsen. Modautoren
-implementieren es nie.
+`ModContext` is a framework interface (P6): it may grow between minor versions. Mod authors never implement it.
 
 ## 18.5 `PlatformInfo`
 
@@ -130,33 +129,32 @@ public interface PlatformInfo {
     Optional<SemVer> fabricApi();
     int javaMajor();             // 17 | 21 | 25 | …
     String payloadId();          // "mc1214"
-    String mappingNamespace();   // "intermediary" | "named" (Dev)
+    String mappingNamespace();   // "intermediary" | "named" (dev)
 
-    /** true, wenn die laufende MC-Version im angegebenen Fabric-Predicate-Bereich liegt. */
+    /** true when the running MC version falls inside the given Fabric predicate range. */
     boolean minecraftIn(String... predicates);
 
-    /** Kompaktform für Vergleiche in Common-Code: 1.21.4 -> 12104, 26.1 -> 260100. */
+    /** Compact form for comparisons in common code: 1.21.4 -> 12104, 26.1 -> 260100. */
     int minecraftOrdinal();
 }
 ```
 
-`minecraftIn(">=1.21")` und `minecraftOrdinal()` erlauben Common-Code, *Verhalten* zu variieren
-(z. B. abweichende Default-Config-Werte), ohne MC-Typen zu berühren. Sie erlauben **nicht**, unterschiedliche
-MC-API aufzurufen — das bleibt Sache des Adapters. Diese Grenze wird in `docs/common-code.md` mit einem
-Anti-Pattern-Beispiel deutlich gemacht.
+`minecraftIn(">=1.21")` and `minecraftOrdinal()` let common code vary *behaviour* (e.g. different default config
+values) without touching MC types. They do **not** allow calling different MC APIs — that remains the adapter's
+job. This boundary is made explicit in `docs/common-code.md` with an anti-pattern example.
 
-## 18.6 Opake Referenzen und Escape Hatch
+## 18.6 Opaque references and the escape hatch
 
 ```java
 package dev.fabricmultiloader.api.ref;
 
 public interface Unwrappable {
     /**
-     * Liefert das zugrundeliegende Minecraft-Objekt.
-     * NUR aus Version-Modulen aufrufen — Common-Code kann den Typ nicht referenzieren,
-     * ohne seine Versionsneutralität zu verlieren.
+     * Returns the underlying Minecraft object.
+     * Call ONLY from version modules — common code cannot reference the type
+     * without losing its version neutrality.
      *
-     * @throws ClassCastException wenn der Typ nicht passt (mit erklärender Message)
+     * @throws ClassCastException when the type does not match (with an explanatory message)
      */
     <T> T unwrap(Class<T> type);
 }
@@ -169,7 +167,7 @@ public interface PlayerRef extends Unwrappable {
     double x(); double y(); double z();
     boolean hasPermission(int level);
     void sendMessage(String plainText);
-    void sendMessage(dev.fabricmultiloader.api.text.Text text);   // eigenes, minimales Text-Modell
+    void sendMessage(dev.fabricmultiloader.api.text.Text text);   // our own minimal text model
 }
 
 public interface WorldRef extends Unwrappable {
@@ -186,42 +184,42 @@ public interface ItemStackRef extends Unwrappable {
 }
 ```
 
-`unwrap` ist der bewusst eingebaute, dokumentierte Ausweg. Er ist **im Common-Code nicht sinnvoll benutzbar**
-(der Typ fehlt dort), aber im Version-Modul die Brücke zurück zur vollen MC-API:
+`unwrap` is the deliberately built-in, documented way out. It is **not usefully callable from common code** (the
+type is not available there) but is the bridge back to the full MC API inside a version module:
 
 ```java
-// im Payload 1.21.4
+// inside the 1.21.4 payload
 ServerPlayerEntity mcPlayer = playerRef.unwrap(ServerPlayerEntity.class);
 ```
 
-Das eigene `Text`-Modell (`dev.fabricmultiloader.api.text`) umfasst `Text.literal`, `Text.translatable`,
-`Text.of(...).color(...).bold()` und wird vom Adapter in `net.minecraft.text.Text` übersetzt. Es ist bewusst
-minimal (Literal, Translatable, Farbe, Stil, Klick-/Hover-Aktion) und deckt die Fälle ab, die Common-Code
-realistisch braucht.
+The own text model (`dev.fabricmultiloader.api.text`) comprises `Text.literal`, `Text.translatable`,
+`Text.of(...).color(...).bold()` and is translated by the adapter into `net.minecraft.text.Text`. It is
+deliberately minimal (literal, translatable, colour, style, click/hover action) and covers the cases common code
+realistically needs.
 
-## 18.7 Services — der typisierte Escape Hatch
+## 18.7 Services — the typed escape hatch
 
 ```java
 package dev.fabricmultiloader.api;
 
 @ImplementedByFramework
 public interface ServiceRegistry {
-    <T> T get(Class<T> type);                       // wirft OmniException OMNI-4010, wenn fehlt
+    <T> T get(Class<T> type);                       // throws OmniException OMNI-4010 when absent
     <T> java.util.Optional<T> find(Class<T> type);
-    <T> void register(Class<T> type, T impl);        // nur während Platform#onInitialize erlaubt
+    <T> void register(Class<T> type, T impl);        // permitted only during Platform#onInitialize
     java.util.Set<Class<?>> registered();
 }
 ```
 
-Verwendung: Der Modentwickler definiert im **Common**-Modul ein Interface ohne MC-Typen, implementiert es im
-**Version**-Modul und ruft es aus Common auf.
+Usage: the mod developer defines an interface without MC types in the **common** module, implements it in the
+**version** module, and calls it from common code.
 
 ```java
 // common/src/main/java/com/example/common/service/OreGenService.java
 package com.example.common.service;
 
 public interface OreGenService {
-    /** Fügt die Erz-Platzierung in die Weltgenerierung ein. */
+    /** Adds the ore placement into world generation. */
     void installRubyOre(int veinSize, int perChunk, int minY, int maxY);
 }
 ```
@@ -236,21 +234,21 @@ public final class OreGenService1214 implements OreGenService {
                 BiomeSelectors.foundInOverworld(),
                 GenerationStep.Feature.UNDERGROUND_ORES,
                 RegistryKey.of(RegistryKeys.PLACED_FEATURE, Identifier.of("examplemod", "ruby_ore")));
-        // versionsspezifische Registrierung von ConfiguredFeature/PlacedFeature …
+        // version-specific registration of ConfiguredFeature/PlacedFeature …
     }
 }
 ```
 
 ```java
-// common: Aufruf ohne jede MC-Referenz
+// common: call without any MC reference
 ctx.services().get(OreGenService.class).installRubyOre(6, 12, -32, 48);
 ```
 
-Damit ist **jede** nicht abstrahierte MC-Funktionalität erreichbar, ohne dass die Common-API sie kennen muss.
-Der Preis ist ein Interface pro Bedarf — dafür ist er typsicher, refactoringfähig, testbar (Mock im Unit-Test)
-und ohne Reflection.
+This makes **every** non-abstracted MC feature reachable without the common API having to know about it. The price
+is one interface per need — in exchange it is type-safe, refactorable, testable (mockable in unit tests) and free
+of reflection.
 
-## 18.8 Capabilities — Feature-Gates statt Versionsvergleiche
+## 18.8 Capabilities — feature gates instead of version comparisons
 
 ```java
 package dev.fabricmultiloader.api;
@@ -259,44 +257,44 @@ public final class Capability<T> {
     private final String id; private final Class<T> type;
     public static <T> Capability<T> of(String id, Class<T> type);
     public String id(); public Class<T> type();
-    // equals/hashCode über id
+    // equals/hashCode over id
 }
 
 public final class Capabilities {
-    /** Datenkomponenten statt NBT — erst ab MC 1.20.5. */
+    /** Data components instead of NBT — only from MC 1.20.5. */
     public static final Capability<ComponentApi> COMPONENTS =
             Capability.of("components", ComponentApi.class);
 
-    /** Typisierte Netzwerk-Payloads (CustomPayload) — erst ab MC 1.20.5. */
+    /** Typed network payloads (CustomPayload) — only from MC 1.20.5. */
     public static final Capability<TypedPayloadApi> TYPED_PAYLOADS =
             Capability.of("networking.typed", TypedPayloadApi.class);
 
-    /** Registrierungs-Sets/Tags mit RegistryEntryLookup — ab 1.19.3. */
+    /** Registry sets/tags with RegistryEntryLookup — from 1.19.3. */
     public static final Capability<TagApi> TAGS = Capability.of("tags", TagApi.class);
 
-    /** Client-Gametest-Unterstützung — nur wo Fabric API sie anbietet. */
+    /** Client gametest support — only where Fabric API offers it. */
     public static final Capability<ClientGametestApi> CLIENT_GAMETEST =
             Capability.of("gametest.client", ClientGametestApi.class);
 }
 ```
 
-Verwendung im Common-Code:
+Usage in common code:
 
 ```java
 ctx.capability(Capabilities.COMPONENTS).ifPresent(components ->
         components.attach(rubyHandle, "examplemod:charge", 0));
 ```
 
-Vorteil gegenüber `if (ctx.platform().minecraftOrdinal() >= 12005)`: Die Bedingung ist **semantisch** („gibt es
-Komponenten?“) statt **numerisch**, sie ist im Payload deklariert (`payload.capabilities` im Manifest, damit im
-Validator und im Diagnosebericht sichtbar), und ein Backport oder eine Vorabimplementierung ändert nur eine
-Deklaration statt Common-Code.
+Advantage over `if (ctx.platform().minecraftOrdinal() >= 12005)`: the condition is **semantic** (“are components
+available?”) instead of **numeric**, it is declared in the payload (`payload.capabilities` in the manifest, hence
+visible to the validator and in the diagnostic report), and a backport or an early implementation changes only a
+declaration instead of common code.
 
 ## 18.9 `ModLogger`
 
 ```java
 public interface ModLogger {
-    void trace(String msg, Object... args);       // {} -Platzhalter, SLF4J-Stil
+    void trace(String msg, Object... args);       // {} placeholders, SLF4J style
     void debug(String msg, Object... args);
     void info (String msg, Object... args);
     void warn (String msg, Object... args);
@@ -307,19 +305,19 @@ public interface ModLogger {
 }
 ```
 
-Implementiert über SLF4J, falls vorhanden, sonst `System.err` (Kapitel 9.8). `{}`-Formatierung wird selbst
-implementiert (8 Zeilen), damit sie ohne SLF4J identisch funktioniert.
+Implemented over SLF4J when available, otherwise `System.err` (chapter 9.8). `{}` formatting is implemented in
+house (8 lines) so it behaves identically without SLF4J.
 
 ---
 
 # 19. Version Adapter API
 
-## 19.1 `Platform` und `PlatformFactory`
+## 19.1 `Platform` and `PlatformFactory`
 
 ```java
 package dev.fabricmultiloader.api.platform;
 
-@ImplementedByMod          // aber nur in Version-Modulen!
+@ImplementedByMod          // but only in version modules!
 public interface PlatformFactory {
     Platform create(ModContext ctx);
 }
@@ -329,29 +327,29 @@ public interface Platform {
 
     PlatformInfo info();
 
-    // ---- Subsystem-Implementierungen (Pflicht) ---------------------------
+    // ---- subsystem implementations (mandatory) ---------------------------
     Registries registries();
     Networking networking();
     Commands   commands();
     Events     events();
 
-    // ---- Lifecycle-Hooks (alle default, also optional) -------------------
+    // ---- lifecycle hooks (all default, hence optional) -------------------
     default void onPreLaunch(PreLaunchContext ctx) { }
     default void onInitialize(ModContext ctx) { }
     default void onInitializeClient(ModContext ctx) { }
     default void onInitializeServer(ModContext ctx) { }
 
-    /** Capability-Auflösung. Default: keine. */
+    /** Capability resolution. Default: none. */
     default <T> java.util.Optional<T> capability(Capability<T> capability) {
         return java.util.Optional.empty();
     }
 
-    /** Ergänzt Crash-Reports um Kontext (Kapitel 30.3). Default: nichts. */
+    /** Adds context to crash reports (chapter 30.3). Default: nothing. */
     default void installCrashContext(CrashContext ctx) { }
 }
 ```
 
-Damit ein Version-Modul minimal bleibt, liefert die Runtime eine abstrakte Basisklasse mit sinnvollen Defaults:
+To keep a version module minimal, the runtime provides an abstract base class with sensible defaults:
 
 ```java
 package dev.fabricmultiloader.api.platform;
@@ -367,7 +365,7 @@ public abstract class AbstractPlatform implements Platform {
 }
 ```
 
-## 19.2 Vollständiger Adapter für Minecraft 1.21.4
+## 19.2 A complete adapter for Minecraft 1.21.4
 
 ```java
 package com.example.mc1214;
@@ -385,7 +383,7 @@ import dev.fabricmultiloader.api.net.Networking;
 import dev.fabricmultiloader.api.platform.AbstractPlatform;
 import dev.fabricmultiloader.api.platform.CrashContext;
 import dev.fabricmultiloader.api.registry.Registries;
-import dev.fabricmultiloader.runtime.adapter.CommandsImpl;      // von der Runtime bereitgestellt
+import dev.fabricmultiloader.runtime.adapter.CommandsImpl;      // provided by the runtime
 import dev.fabricmultiloader.runtime.adapter.EventsImpl;
 
 import java.util.Optional;
@@ -413,7 +411,7 @@ public final class Platform1214 extends AbstractPlatform {
     @Override
     public void onInitialize(ModContext ctx) {
         ctx.services().register(OreGenService.class, new OreGenService1214());
-        registries.flush();        // führt aufgeschobene Registrierungen aus, s. 19.4
+        registries.flush();        // performs deferred registrations, see 19.4
     }
 
     @Override
@@ -438,54 +436,54 @@ import dev.fabricmultiloader.api.ModContext;
 import dev.fabricmultiloader.api.platform.Platform;
 import dev.fabricmultiloader.api.platform.PlatformFactory;
 
-/** Vom Manifest referenziert: payload.platformFactory */
+/** Referenced by the manifest: payload.platformFactory */
 public final class Platform1214Factory implements PlatformFactory {
     @Override public Platform create(ModContext ctx) { return new Platform1214(ctx); }
 }
 ```
 
-Der Adapter ist damit ~40 Zeilen Klebecode. `CommandsImpl` und `EventsImpl` liefert die Runtime, weil Commands
-und Fabric-API-Events über 1.20.1–26.1 stabil genug sind, um **eine** Implementierung zu erlauben
-(Kapitel 28.4) — sie sind aber überschreibbar, falls eine Version abweicht.
+The adapter is therefore ~40 lines of glue code. `CommandsImpl` and `EventsImpl` are provided by the runtime,
+because commands and Fabric API events are stable enough across 1.20.1–26.1 to allow **one** implementation
+(chapter 28.4) — but they remain overridable should a version diverge.
 
-## 19.3 Lifecycle im Detail
+## 19.3 The lifecycle in detail
 
 ```
-Phase                       Container            Payload                       Modcode
+Phase                       Container            Payload                       Mod code
 ─────────────────────────── ─────────────────── ───────────────────────────── ──────────────────────────
 preLaunch (Fabric)          ContainerPreLaunch  PayloadPreLaunch
-  · Manifest + Resolve      ✓
-  · Platform erzeugen                            PlatformFactory#create
+  · manifest + resolve      ✓
+  · create the platform                          PlatformFactory#create
   · Platform#onPreLaunch                         ✓
   · UniversalPreLaunch                                                         onPreLaunch(PreLaunchContext)
 main (Fabric)                                    PayloadMain
-  · Platform#onInitialize                        ✓  (Services, Registries)
+  · Platform#onInitialize                        ✓  (services, registries)
   · UniversalMod                                                               onInitialize(ModContext)
-  · Registries#flush                             ✓  (nach Modcode!)
+  · Registries#flush                             ✓  (after the mod code!)
 client (Fabric)                                  PayloadClient
   · Platform#onInitializeClient                  ✓
   · UniversalClientMod                                                         onInitializeClient(ModContext)
 server (Fabric)                                  PayloadServer
   · Platform#onInitializeServer                  ✓
   · UniversalServerMod                                                         onInitializeServer(ModContext)
-Laufzeit                                                                       Events, Commands, Networking
+runtime                                                                        events, commands, networking
 ```
 
-Wichtig: `Platform#onInitialize` läuft **vor** dem Modcode (damit Services verfügbar sind),
-`Registries#flush()` **nach** dem Modcode (damit alle deklarierten Inhalte gesammelt sind). Diese Reihenfolge ist
-normativ und wird von `LifecycleStateMachine` erzwungen; ein Registry-Aufruf nach `flush` wirft `OMNI-4002`
-mit Hinweis auf die korrekte Phase.
+Important: `Platform#onInitialize` runs **before** the mod code (so services are available),
+`Registries#flush()` runs **after** the mod code (so all declared content has been collected). This order is
+normative and enforced by `LifecycleStateMachine`; a registry call after `flush` throws `OMNI-4002` with a hint at
+the correct phase.
 
-## 19.4 Registries — deklarativ mit aufgeschobener Ausführung
+## 19.4 Registries — declarative with deferred execution
 
 ```java
 package dev.fabricmultiloader.api.registry;
 
-@ImplementedByMod            // im Version-Modul
+@ImplementedByMod            // in the version module
 public interface Registries {
     ItemHandle      item(Id id, ItemSpec spec);
     BlockHandle     block(Id id, BlockSpec spec);
-    /** Registriert Block + zugehöriges BlockItem in einem Schritt. */
+    /** Registers a block and its BlockItem in one step. */
     BlockHandle     blockWithItem(Id id, BlockSpec spec, ItemSpec itemSpec);
     SoundHandle     sound(Id id);
     ItemGroupHandle itemGroup(Id id, ItemGroupSpec spec);
@@ -499,7 +497,7 @@ package dev.fabricmultiloader.api.registry;
 public final class ItemSpec {
     private final int maxCount; private final Rarity rarity; private final boolean fireproof;
     private final Integer maxDamage; private final Id craftingRemainder;
-    private final ItemBehavior behavior;   // kann null sein
+    private final ItemBehavior behavior;   // may be null
     private final java.util.List<String> tooltipTranslationKeys;
 
     public static Builder builder() { return new Builder(); }
@@ -516,7 +514,7 @@ public final class ItemSpec {
     }
 }
 
-/** Verhaltens-Callbacks ohne Minecraft-Typen. */
+/** Behaviour callbacks without Minecraft types. */
 public interface ItemBehavior {
     default UseResult onUse(UseContext ctx) { return UseResult.PASS; }
     default UseResult onUseOnBlock(BlockUseContext ctx) { return UseResult.PASS; }
@@ -530,7 +528,7 @@ public interface UseContext {
 public enum UseResult { SUCCESS, CONSUME, PASS, FAIL }
 ```
 
-Implementierung für 1.20.1 und 1.21.4 — die Divergenz ist real und wird hier vollständig gezeigt:
+Implementations for 1.20.1 and 1.21.4 — the divergence is real and shown here in full:
 
 ```java
 // versions/mc-1.20.1/src/main/java/com/example/mc1201/registry/Registries1201.java
@@ -539,8 +537,6 @@ package com.example.mc1201.registry;
 import net.fabricmc.fabric.api.item.v1.FabricItemSettings;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registry;
-import net.minecraft.registry.Registries as McRegistries;   // (Illustration: in Java per Import-Alias nicht möglich,
-                                                            //  real: net.minecraft.registry.Registries direkt genutzt)
 import net.minecraft.util.Identifier;
 
 public final class Registries1201 implements dev.fabricmultiloader.api.registry.Registries {
@@ -552,7 +548,7 @@ public final class Registries1201 implements dev.fabricmultiloader.api.registry.
 
     @Override
     public ItemHandle item(Id id, ItemSpec spec) {
-        Identifier mcId = new Identifier(id.namespace(), id.path());     // 1.20.1: Konstruktor
+        Identifier mcId = new Identifier(id.namespace(), id.path());     // 1.20.1: constructor
         ItemHandleImpl handle = new ItemHandleImpl(id);
         deferred.add(() -> {
             FabricItemSettings settings = new FabricItemSettings().maxCount(spec.maxCount());
@@ -591,8 +587,8 @@ public final class Registries1214 implements dev.fabricmultiloader.api.registry.
 
     @Override
     public ItemHandle item(Id id, ItemSpec spec) {
-        Identifier mcId = Identifier.of(id.namespace(), id.path());        // 1.21+: statische Factory
-        RegistryKey<Item> key = RegistryKey.of(RegistryKeys.ITEM, mcId);  // ab 1.21.2 Pflicht
+        Identifier mcId = Identifier.of(id.namespace(), id.path());        // 1.21+: static factory
+        RegistryKey<Item> key = RegistryKey.of(RegistryKeys.ITEM, mcId);  // mandatory from 1.21.2
         ItemHandleImpl handle = new ItemHandleImpl(id);
         deferred.add(() -> {
             Item.Settings settings = new Item.Settings().registryKey(key).maxCount(spec.maxCount());
@@ -611,10 +607,10 @@ public final class Registries1214 implements dev.fabricmultiloader.api.registry.
 }
 ```
 
-Die Unterschiede — `new Identifier(...)` vs. `Identifier.of(...)`, `FabricItemSettings` vs. `Item.Settings`,
-`registryKey` als neue Pflicht, `Registry.register(registry, Identifier, T)` vs.
-`Registry.register(registry, RegistryKey, T)` — sind exakt die Art von Bruch, die ein einzelnes Kompilat
-unmöglich macht und die hier auf **jeweils 15 Zeilen Adaptercode** eingedämmt wird.
+The differences — `new Identifier(...)` vs. `Identifier.of(...)`, `FabricItemSettings` vs. `Item.Settings`,
+`registryKey` as a new requirement, `Registry.register(registry, Identifier, T)` vs.
+`Registry.register(registry, RegistryKey, T)` — are exactly the kind of break that makes a single compilation
+impossible, and here they are contained in **15 lines of adapter code each**.
 
 `ItemHandle`:
 
@@ -623,39 +619,38 @@ package dev.fabricmultiloader.api.registry;
 
 public interface ItemHandle extends Unwrappable {
     Id id();
-    boolean isBound();                       // false vor flush()
+    boolean isBound();                       // false before flush()
     ItemStackRef stack(int count);
     dev.fabricmultiloader.api.text.Text name();
 }
 ```
 
-## 19.5 Warum aufgeschobene Registrierung
+## 19.5 Why deferred registration
 
-Common-Code deklariert Inhalte in `onInitialize`. Zu diesem Zeitpunkt ist die MC-Registry in einigen Versionen
-schon, in anderen noch nicht schreibbar; ab 1.21.2 verlangt `Item.Settings` einen `RegistryKey`, der aus der ID
-gebildet werden muss. Die Aufschiebung löst drei Probleme gleichzeitig:
+Common code declares content in `onInitialize`. At that moment the MC registry is already writable in some versions
+and not yet in others; from 1.21.2 onwards `Item.Settings` requires a `RegistryKey` that has to be derived from the
+ID. Deferral solves three problems at once:
 
-1. Der Adapter bestimmt den **Zeitpunkt** der echten Registrierung pro Version (in `flush()`, aufgerufen aus
-   `PayloadMain` nach dem Modcode).
-2. Common-Code erhält sofort einen `ItemHandle` und kann ihn in Feldern speichern, obwohl das MC-Objekt noch
-   nicht existiert (`isBound() == false`).
-3. Die Reihenfolge der Registrierung ist deterministisch (Deklarationsreihenfolge), was für Registry-IDs in
-   Netzwerkprotokollen und Datapacks relevant ist.
+1. The adapter decides the **timing** of the real registration per version (in `flush()`, called from `PayloadMain`
+   after the mod code).
+2. Common code immediately receives an `ItemHandle` and can store it in fields even though the MC object does not
+   exist yet (`isBound() == false`).
+3. Registration order is deterministic (declaration order), which matters for registry IDs in network protocols and
+   data packs.
 
-## 19.6 Capability-Deklaration und -Validierung
+## 19.6 Capability declaration and validation
 
-Ein Payload deklariert im Build (Kapitel 21.4) `capabilities = ["registries", "commands", "networking.v1",
-"events.lifecycle", "components"]`. Der Validator prüft (`OMNI-1130`), dass für jede deklarierte Capability
-`Platform#capability` einen nichtleeren Wert liefert — geprüft durch einen **Reflection-freien
-Bytecode-Check**: Die Adapter-Klasse muss eine `capability`-Methode überschreiben und die entsprechende
-`Capabilities`-Konstante im Konstantenpool referenzieren. Das ist eine Heuristik mit klarer Fehlermeldung und
-`@SuppressCapabilityCheck`-Ausweg; sie fängt in der Praxis den häufigsten Fehler (Capability deklariert, aber
-`capability()` nicht implementiert).
+A payload declares in the build (chapter 21.4) `capabilities = ["registries", "commands", "networking.v1",
+"events.lifecycle", "components"]`. The validator checks (`OMNI-1130`) that `Platform#capability` returns a
+non-empty value for every declared capability — verified by a **reflection-free bytecode check**: the adapter class
+must override a `capability` method and reference the corresponding `Capabilities` constant in its constant pool.
+That is a heuristic with a clear error message and a `@SuppressCapabilityCheck` opt-out; in practice it catches the
+most common mistake (a capability declared but `capability()` not implemented).
 
-Der Diagnosebericht listet Capabilities pro Payload, sodass ein Nutzer sofort sieht, warum ein Feature auf
-1.20.1 fehlt.
+The diagnostic report lists capabilities per payload, so a user immediately sees why a feature is missing on
+1.20.1.
 
-## 19.7 Annotation Processor — Boilerplate-Eliminierung
+## 19.7 Annotation processor — eliminating boilerplate
 
 ```java
 // common/src/main/java/com/example/common/ExampleMod.java
@@ -676,38 +671,37 @@ public final class ExampleModClient implements UniversalClientMod { … }
 
 `fabricmultiloader-processor` (`javax.annotation.processing.Processor`, `-Aomni.modId=<id>`):
 
-* validiert, dass die annotierte Klasse das passende Interface implementiert, `public`, nicht abstrakt ist und
-  einen öffentlichen parameterlosen Konstruktor hat — sonst `error` mit `Element`-Bezug, also direkt in der IDE
-  sichtbar;
-* validiert, dass die Klasse in einem als `commonPackages` deklarierten Package liegt;
-* schreibt `omni/entrypoints.json` in die Ressourcen von `:common`;
-* der `generateOmniManifest`-Task liest diese Datei und mischt sie mit den DSL-Angaben; Duplikate sind ein
-  Fehler (`OMNI-1140`), fehlende Entrypoints ebenfalls (`OMNI-1141`: mindestens ein `common`-Entrypoint).
+* validates that the annotated class implements the matching interface, is `public`, is not abstract and has a
+  public no-argument constructor — otherwise an `error` bound to the `Element`, i.e. visible directly in the IDE;
+* validates that the class resides in a package declared in `commonPackages`;
+* writes `omni/entrypoints.json` into the resources of `:common`;
+* the `generateOmniManifest` task reads that file and merges it with the DSL entries; duplicates are an error
+  (`OMNI-1140`), missing entrypoints likewise (`OMNI-1141`: at least one `common` entrypoint).
 
-Der Processor ist **optional**: `fabricMultiLoader { mod { entrypoint("com.example.common.ExampleMod") } }`
-funktioniert ohne ihn. Das Template aktiviert ihn.
+The processor is **optional**: `fabricMultiLoader { mod { entrypoint("com.example.common.ExampleMod") } }` works
+without it. The template enables it.
 
-## 19.8 Adapter für versionsspezifische Erweiterung durch Modautoren
+## 19.8 Version-specific extension by mod authors
 
-Ein Version-Modul darf die von der Runtime gelieferten Implementierungen ersetzen:
+A version module may replace the implementations supplied by the runtime:
 
 ```java
 public final class Platform1201 extends AbstractPlatform {
     private final Commands commands;
     Platform1201(ModContext ctx) {
         super(ctx);
-        // 1.20.1 hat keine ‚registryAccess'-Variante eines Befehls, den wir brauchen:
-        this.commands = new Commands1201(ctx);        // eigene Implementierung
+        // 1.20.1 has no 'registryAccess' variant of a command we need:
+        this.commands = new Commands1201(ctx);        // our own implementation
     }
     @Override public Commands commands() { return commands; }
 }
 ```
 
-Damit ist die Runtime-Implementierung ein Default, keine Zwangsjacke — wichtig für Langlebigkeit: Wenn MC 27
-die Command-Registrierung umbaut, braucht nur das neue Payload eine eigene `Commands`-Implementierung; die
-Runtime muss nicht aktualisiert werden.
+The runtime implementation is therefore a default, not a straitjacket — which matters for longevity: if MC 27
+overhauls command registration, only the new payload needs its own `Commands` implementation; the runtime does not
+have to be updated.
 
-## 19.9 Öffentliche Mod-API für Drittmods
+## 19.9 The public mod API for third-party mods
 
 ```java
 // common/src/main/java/com/example/common/api/ExampleModApi.java
@@ -729,43 +723,42 @@ public interface ExampleModApi {
 }
 ```
 
-Der Container veröffentlicht die Implementierung in `getObjectShare()` am Ende von `onInitialize`. Weil dieses
-Interface im **Container** liegt (nicht im Payload) und der Container über alle MC-Versionen dasselbe Kompilat
-ist, gilt: **Eine Drittmod kompiliert genau einmal gegen `examplemod-api` und funktioniert mit jeder
-MC-Version.** Das ist ein Vorteil, den eine klassische Multi-Jar-Veröffentlichung nicht hat, und ein zentrales
-Verkaufsargument des Frameworks.
+The container publishes the implementation into `getObjectShare()` at the end of `onInitialize`. Because this
+interface lives in the **container** (not in the payload) and the container is the same compilation across all MC
+versions: **a third-party mod compiles exactly once against `examplemod-api` and works with every MC version.**
+That is an advantage a classic multi-JAR release does not have, and a central selling point of the framework.
 
-Publikationsseitig wird dafür ein eigenes Maven-Artefakt erzeugt: `com.example:examplemod-api:2.0.0` = der
-`:common`-Jar, gefiltert auf `com.example.common.api.**` + `dev.fabricmultiloader.api.**` als `api`-Dependency
-(Kapitel 24.7).
+On the publishing side a separate Maven artifact is produced for it: `com.example:examplemod-api:2.0.0` = the
+`:common` JAR filtered to `com.example.common.api.**` plus `dev.fabricmultiloader.api.**` as an `api` dependency
+(chapter 24.7).
 
 ---
 
 # 26. Client/Server Handling
 
-## 26.1 Drei Ebenen der Seitenunterscheidung
+## 26.1 Three levels of side separation
 
-| Ebene | Mechanismus | Wirkung |
+| Level | Mechanism | Effect |
 |---|---|---|
-| **Payload-Ebene** | `environment: "client"` in der Payload-`fabric.mod.json` | Payload wird auf dedizierten Servern gar nicht geladen — inklusive Mixins, AW und Ressourcen. Für reine Client-Mods. |
-| **Mixin-Config-Ebene** | `{"config": "…client.mixins.json", "environment": "client"}` | Client-Mixins werden auf dem Server nicht registriert. |
-| **Code-Ebene** | Getrennte Entrypoints (`UniversalClientMod`), getrennte Packages (`*.client.**`) | Client-Klassen werden auf dem Server nie geladen. |
+| **Payload level** | `environment: "client"` in the payload `fabric.mod.json` | The payload is not loaded at all on dedicated servers — including its mixins, AW and resources. For pure client mods. |
+| **Mixin config level** | `{"config": "…client.mixins.json", "environment": "client"}` | Client mixins are not registered on the server. |
+| **Code level** | Separate entrypoints (`UniversalClientMod`), separate packages (`*.client.**`) | Client classes are never loaded on the server. |
 
-## 26.2 Regeln für Common-Code
+## 26.2 Rules for common code
 
-* Common-Code darf `ctx.side()` abfragen, aber **niemals** clientseitige Funktionalität direkt aufrufen.
-* Clientspezifische Fachlogik gehört in eine Klasse, die nur aus `UniversalClientMod` erreichbar ist.
-* Der Validator prüft (`OMNI-1150`), dass keine Klasse, die von einem `common`-Entrypoint aus erreichbar ist,
-  eine Klasse aus einem als `clientOnly` deklarierten Package referenziert. Die Erreichbarkeitsanalyse ist ein
-  einfacher, transitiver Konstantenpool-Scan über den Container — schnell und ohne Bytecode-Interpretation.
+* Common code may query `ctx.side()` but must **never** call client-side functionality directly.
+* Client-specific business logic belongs in a class reachable only from `UniversalClientMod`.
+* The validator checks (`OMNI-1150`) that no class reachable from a `common` entrypoint references a class in a
+  package declared `clientOnly`. The reachability analysis is a simple transitive constant-pool scan over the
+  container — fast and without bytecode interpretation.
 
-## 26.3 Server-only Payloads
+## 26.3 Server-only payloads
 
-Analog zu Client-only: `environment: "server"`. Praktisch relevant für Mods, die auf dedizierten Servern
-zusätzliche Payloads brauchen (z. B. weil eine Server-Software wie Paper-artige Fabric-Forks eigene Anpassungen
-verlangt). Das Framework unterstützt es, das Template nutzt es nicht.
+Analogous to client-only: `environment: "server"`. Practically relevant for mods that need additional payloads on
+dedicated servers (e.g. because a server software such as a Paper-like Fabric fork requires its own adjustments).
+The framework supports it; the template does not use it.
 
-## 26.4 Beispiel: Client-Initialisierung
+## 26.4 Example: client initialisation
 
 ```java
 // common/src/main/java/com/example/common/ExampleModClient.java
@@ -781,33 +774,33 @@ public final class ExampleModClient implements UniversalClientMod {
     public void onInitializeClient(ModContext ctx) {
         ctx.log().info("Client init on Minecraft {}", ctx.platform().minecraft());
 
-        // Netzwerk-Empfänger für die S2C-Nachricht (Kapitel 27)
+        // network receiver for the S2C message (chapter 27)
         ExampleNetworking.RUBY_SYNC.receiveOnClient((payload, client) ->
                 client.log().debug("charge={} for {}", payload.charge(), payload.item()));
 
-        // Client-Tick-Event über die neutrale Event-API
+        // client tick event through the neutral event API
         ctx.events().clientTick(client -> RubyHud.tick());
 
-        // Versions-/Fähigkeitsabhängige Client-Erweiterung
+        // version-/capability-dependent client extension
         ctx.capability(Capabilities.COMPONENTS).ifPresent(c -> RubyHud.enableComponentDisplay());
     }
 }
 ```
 
-`RubyHud` liegt im Common-Modul und arbeitet ausschließlich mit neutralen Typen; das eigentliche Rendern
-geschieht über einen Service (`HudRenderService`), den jedes Payload implementiert — weil
-`HudRenderCallback`/`DrawContext` sich zwischen 1.20.1 und 1.21.4 mehrfach geändert haben.
+`RubyHud` lives in the common module and works exclusively with neutral types; the actual rendering happens through
+a service (`HudRenderService`) implemented by each payload — because `HudRenderCallback`/`DrawContext` changed
+several times between 1.20.1 and 1.21.4.
 
 ---
 
-# 27. Networking Example — das Referenzbeispiel für Adaptierung
+# 27. Networking Example — the reference case for adaptation
 
-## 27.1 Die Common-API
+## 27.1 The common API
 
 ```java
 package dev.fabricmultiloader.api.net;
 
-@ImplementedByMod          // im Version-Modul
+@ImplementedByMod          // in the version module
 public interface Networking {
     <T> ChannelHandle<T> register(ChannelSpec<T> spec);
 }
@@ -827,21 +820,21 @@ public final class ChannelSpec<T> {
 public interface ChannelHandle<T> {
     Id id();
 
-    /** Server-Seite: Empfänger für C2S. */
+    /** Server side: receiver for C2S. */
     void receiveOnServer(C2SReceiver<T> receiver);
-    /** Client-Seite: Empfänger für S2C. */
+    /** Client side: receiver for S2C. */
     void receiveOnClient(S2CReceiver<T> receiver);
 
-    /** Client → Server. Nur auf dem Client aufrufbar. */
+    /** Client → server. Callable on the client only. */
     void sendToServer(T payload);
-    /** Server → ein Spieler. */
+    /** Server → one player. */
     void sendTo(PlayerRef player, T payload);
-    /** Server → alle Spieler in einer Welt. */
+    /** Server → all players in a world. */
     void sendToAllIn(WorldRef world, T payload);
-    /** Server → alle Spieler. */
+    /** Server → all players. */
     void sendToAll(T payload);
 
-    /** true, wenn der Gegenüber diesen Channel angemeldet hat. */
+    /** true when the peer has registered this channel. */
     boolean canReceive(PlayerRef player);
 }
 
@@ -864,15 +857,15 @@ public interface ByteSink {
     <E> ByteSink writeOptional(java.util.Optional<E> value, java.util.function.BiConsumer<ByteSink, E> writer);
 }
 
-public interface ByteSource { /* symmetrische read*-Methoden */ }
+public interface ByteSource { /* symmetric read* methods */ }
 ```
 
-`ByteSink`/`ByteSource` sind der entscheidende Trick: Sie kapseln `PacketByteBuf` bzw. `RegistryByteBuf`, sodass
-der Codec im **Common**-Code lebt, obwohl die Buffer-Typen versionsspezifisch sind. `writeItemStack` ist bewusst
-Teil der Schnittstelle, weil ItemStack-Serialisierung sich zwischen 1.20.1 (NBT) und 1.20.5+ (Komponenten,
-registry-abhängig) fundamental geändert hat und deshalb nur der Adapter sie korrekt implementieren kann.
+`ByteSink`/`ByteSource` are the decisive trick: they encapsulate `PacketByteBuf` resp. `RegistryByteBuf`, so the
+codec can live in **common** code even though the buffer types are version-specific. `writeItemStack` is
+deliberately part of the interface, because ItemStack serialisation changed fundamentally between 1.20.1 (NBT) and
+1.20.5+ (components, registry-dependent) and can therefore be implemented correctly only by the adapter.
 
-## 27.2 Verwendung im Common-Code
+## 27.2 Usage in common code
 
 ```java
 // common/src/main/java/com/example/common/net/ExampleNetworking.java
@@ -913,9 +906,9 @@ public final class ExampleNetworking {
 }
 ```
 
-Dieser Code ist **vollständig versionsneutral** und wird genau einmal kompiliert.
+This code is **completely version-neutral** and is compiled exactly once.
 
-## 27.3 Adapter für Minecraft 1.20.1 (rohes `PacketByteBuf`, kanalbasiert)
+## 27.3 Adapter for Minecraft 1.20.1 (raw `PacketByteBuf`, channel-based)
 
 ```java
 package com.example.mc1201.net;
@@ -949,8 +942,8 @@ public final class Networking1201 implements Networking {
         public void receiveOnServer(C2SReceiver<T> receiver) {
             ServerPlayNetworking.registerGlobalReceiver(channel,
                     (server, player, handler, buf, responseSender) -> {
-                        T payload = spec.codec().read(new ByteSource1201(buf));      // auf Netzwerk-Thread
-                        server.execute(() ->                                         // auf Server-Thread
+                        T payload = spec.codec().read(new ByteSource1201(buf));      // on the network thread
+                        server.execute(() ->                                         // on the server thread
                                 receiver.accept(payload, new PlayerRef1201(player), ctx));
                     });
         }
@@ -958,7 +951,7 @@ public final class Networking1201 implements Networking {
         @Override
         public void receiveOnClient(S2CReceiver<T> receiver) {
             if (FabricLoader.getInstance().getEnvironmentType() != EnvType.CLIENT) return;
-            ClientNet1201.register(channel, spec, receiver, ctx);   // eigene Klasse: kein Client-Typ hier
+            ClientNet1201.register(channel, spec, receiver, ctx);   // separate class: no client type here
         }
 
         @Override
@@ -979,13 +972,13 @@ public final class Networking1201 implements Networking {
         public boolean canReceive(PlayerRef player) {
             return ServerPlayNetworking.canSend(player.unwrap(ServerPlayerEntity.class), channel);
         }
-        // sendToAllIn / sendToAll analog über PlayerLookup
+        // sendToAllIn / sendToAll analogously via PlayerLookup
     }
 }
 ```
 
 ```java
-// ByteSink-Adapter für 1.20.1
+// ByteSink adapter for 1.20.1
 final class ByteSink1201 implements ByteSink {
     private final PacketByteBuf buf;
     ByteSink1201(PacketByteBuf buf) { this.buf = buf; }
@@ -993,11 +986,11 @@ final class ByteSink1201 implements ByteSink {
     public ByteSink writeString(String v){ buf.writeString(v); return this; }
     public ByteSink writeId(Id v)        { buf.writeIdentifier(new Identifier(v.namespace(), v.path())); return this; }
     public ByteSink writeItemStack(ItemStackRef v) { buf.writeItemStack(v.unwrap(ItemStack.class)); return this; }
-    // … alle weiteren Methoden
+    // … all remaining methods
 }
 ```
 
-## 27.4 Adapter für Minecraft 1.21.4 (typisierte `CustomPayload`)
+## 27.4 Adapter for Minecraft 1.21.4 (typed `CustomPayload`)
 
 ```java
 package com.example.mc1214.net;
@@ -1017,7 +1010,7 @@ public final class Networking1214 implements Networking, TypedPayloadApi {
     private final ModContext ctx;
     public Networking1214(ModContext ctx) { this.ctx = ctx; }
 
-    /** Generischer CustomPayload-Wrapper: trägt den bereits serialisierten Common-Payload. */
+    /** Generic CustomPayload wrapper: carries the already-serialised common payload. */
     record OmniPayload<T>(CustomPayload.Id<OmniPayload<T>> id, T value) implements CustomPayload {
         @Override public CustomPayload.Id<? extends CustomPayload> getId() { return id; }
     }
@@ -1044,7 +1037,7 @@ public final class Networking1214 implements Networking, TypedPayloadApi {
         @Override
         public void receiveOnServer(C2SReceiver<T> receiver) {
             ServerPlayNetworking.registerGlobalReceiver(payloadId, (payload, context) ->
-                    // context.player() liefert bereits den Server-Thread-Kontext
+                    // context.player() already provides the server-thread context
                     receiver.accept(payload.value(), new PlayerRef1214(context.player()), ctx));
         }
 
@@ -1053,34 +1046,34 @@ public final class Networking1214 implements Networking, TypedPayloadApi {
             ServerPlayNetworking.send(player.unwrap(ServerPlayerEntity.class),
                     new OmniPayload<>(payloadId, payload));
         }
-        // sendToServer über ClientPlayNetworking.send(new OmniPayload<>(...)) in einer Client-Klasse
+        // sendToServer via ClientPlayNetworking.send(new OmniPayload<>(...)) in a client class
     }
 
-    // TypedPayloadApi (Capability): erlaubt Common-Code, native Codecs zu nutzen, wenn verfügbar
+    // TypedPayloadApi (capability): lets common code use native codecs when available
     @Override public boolean supportsRegistrySync() { return true; }
 }
 ```
 
-## 27.5 Was dieses Beispiel demonstriert
+## 27.5 What this example demonstrates
 
-| Aspekt | 1.20.1 | 1.21.4 | Lösung |
+| Aspect | 1.20.1 | 1.21.4 | Resolution |
 |---|---|---|---|
-| Kanal-Identität | `Identifier` | `CustomPayload.Id<T>` | Adapter kapselt |
-| Registrierung | implizit beim ersten Receiver | explizit über `PayloadTypeRegistry`, **vor** dem ersten Join | Adapter registriert in `register()`, also in `onInitialize` — funktioniert in beiden Versionen |
-| Puffer-Typ | `PacketByteBuf` | `RegistryByteBuf` (mit Registry-Zugriff) | `ByteSink`/`ByteSource`-Abstraktion |
-| Thread-Wechsel | manuell `server.execute` | vom `context` übernommen | Adapter normalisiert: Receiver läuft **immer** auf dem Spiel-Thread |
-| ItemStack-Serialisierung | NBT | Komponenten-Codec, registry-abhängig | `ByteSink#writeItemStack` |
-| Fabric-API-Version | ≥ 0.92.2 | ≥ 0.114.0 | pro Payload deklariert |
+| Channel identity | `Identifier` | `CustomPayload.Id<T>` | encapsulated by the adapter |
+| Registration | implicit at the first receiver | explicit via `PayloadTypeRegistry`, **before** the first join | the adapter registers in `register()`, i.e. during `onInitialize` — works in both versions |
+| Buffer type | `PacketByteBuf` | `RegistryByteBuf` (with registry access) | the `ByteSink`/`ByteSource` abstraction |
+| Thread hand-off | manual `server.execute` | taken over by the `context` | the adapter normalises: the receiver **always** runs on the game thread |
+| ItemStack serialisation | NBT | component codec, registry-dependent | `ByteSink#writeItemStack` |
+| Fabric API version | ≥ 0.92.2 | ≥ 0.114.0 | declared per payload |
 
-Der Modautor schreibt **einen** Codec und **einen** Handler und erhält korrektes Verhalten auf beiden Versionen.
-Dieses Muster — neutrale Spezifikation + neutraler Datenpfad + versionsspezifische Bindung — ist das
-Grundmuster für jedes weitere Subsystem.
+The mod author writes **one** codec and **one** handler and gets correct behaviour on both versions. This
+pattern — a neutral specification plus a neutral data path plus a version-specific binding — is the base pattern
+for every further subsystem.
 
 ---
 
-# 28. Registries und Events — weitere Beispiele
+# 28. Registries and Events — further examples
 
-## 28.1 Item-Registrierung im Common-Code
+## 28.1 Item registration in common code
 
 ```java
 // common/src/main/java/com/example/common/ExampleMod.java
@@ -1169,7 +1162,7 @@ public final class Arg<T> {
 
 public interface CommandInvocation {
     <T> T arg(String name, Class<T> type);
-    java.util.Optional<PlayerRef> player();      // ausführender Spieler, falls vorhanden
+    java.util.Optional<PlayerRef> player();      // the executing player, if any
     CommandSender sender();
     void reply(String plainText);
     void reply(dev.fabricmultiloader.api.text.Text text);
@@ -1177,7 +1170,7 @@ public interface CommandInvocation {
 }
 ```
 
-Common-Verwendung:
+Common usage:
 
 ```java
 package com.example.common;
@@ -1209,23 +1202,22 @@ final class ExampleCommands {
 }
 ```
 
-Der Adapter (`CommandsImpl` in der Runtime, für alle Versionen gemeinsam) übersetzt `CommandSpec` in Brigadier:
+The adapter (`CommandsImpl` in the runtime, shared across versions) translates `CommandSpec` into Brigadier:
 
 ```java
 package dev.fabricmultiloader.runtime.adapter;
 
 public final class CommandsImpl implements Commands {
-    // Nutzt ausschliesslich CommandRegistrationCallback + Brigadier — beides stabil
-    // von 1.19 bis 26.1. Die einzige Divergenz (ServerCommandSource#sendFeedback nimmt
-    // ab 1.20 einen Supplier) wird ueber einen kleinen, pro Payload gesetzten
-    // FeedbackAdapter geloest, den die Runtime aus Platform#capability bezieht.
+    // Uses only CommandRegistrationCallback + Brigadier — both stable from
+    // 1.19 to 26.1. The single divergence (ServerCommandSource#sendFeedback takes
+    // a Supplier from 1.20 onwards) is handled by a small per-payload
+    // FeedbackAdapter that the runtime obtains from Platform#capability.
 }
 ```
 
-Damit ist auch belegt, dass die Runtime **teilweise** versionsübergreifende Adapter enthalten darf — überall, wo
-die zugrunde liegende API tatsächlich stabil ist. Der Validator dokumentiert das über
-`payload.capabilities`: Ein Payload, das `commands` nicht deklariert, muss `Platform#commands()` selbst
-implementieren.
+This also demonstrates that the runtime **may** contain version-spanning adapters — wherever the underlying API is
+genuinely stable. The validator documents that through `payload.capabilities`: a payload that does not declare
+`commands` must implement `Platform#commands()` itself.
 
 ## 28.3 Events
 
@@ -1244,7 +1236,7 @@ public interface Events {
     Subscription itemUsed      (ItemUseHandler handler);
     Subscription dataReload    (java.util.function.Consumer<ModContext> handler);
 
-    /** Erweiterungspunkt für Payload-spezifische Events. */
+    /** Extension point for payload-specific events. */
     <T> Subscription custom(EventKey<T> key, java.util.function.Consumer<T> handler);
 }
 
@@ -1271,32 +1263,32 @@ final class ExampleEvents {
 
         ctx.events().blockBroken((world, player, pos, blockId) -> {
             if (blockId.equals(Id.of("examplemod", "ruby_block"))) RubyLogic.onRubyBlockBroken(player);
-            return true;   // erlauben
+            return true;   // allow
         });
     }
 }
 ```
 
-## 28.4 Stabilitätsanalyse der Event-Quellen
+## 28.4 Stability analysis of the event sources
 
-| Fabric-API-Event | 1.20.1 | 1.21.x | 26.1 | Bewertung |
+| Fabric API event | 1.20.1 | 1.21.x | 26.1 | Assessment |
 |---|---|---|---|---|
-| `ServerLifecycleEvents.SERVER_STARTED/STOPPING` | ✓ | ✓ | ✓ | stabil ⇒ gemeinsame Runtime-Implementierung |
-| `ServerTickEvents.END_SERVER_TICK` | ✓ | ✓ | ✓ | stabil |
-| `ClientTickEvents.END_CLIENT_TICK` | ✓ | ✓ | ✓ | stabil (Client-Klasse) |
-| `ServerPlayConnectionEvents.JOIN/DISCONNECT` | ✓ | ✓ | ✓ | stabil |
-| `CommandRegistrationCallback` | ✓ (3 Parameter) | ✓ | ✓ | stabil ab 1.19 |
-| `PlayerBlockBreakEvents.BEFORE` | ✓ | ✓ | ✓ | stabil |
-| `ServerWorldEvents.LOAD` | ✓ | ✓ | ✓ | stabil |
-| `HudRenderCallback` | ✓ (`MatrixStack`) | ✗ Signatur (`DrawContext`, dann `RenderTickCounter`) | ✗ | **instabil** ⇒ pro Payload über `HudRenderService` |
-| `ItemTooltipCallback` | ✓ | Signatur erweitert (`Item.TooltipContext`) | ✗ | **instabil** ⇒ Service |
-| `ResourceManagerHelper` | ✓ | ✓ | ✓ | stabil |
-| `PayloadTypeRegistry` | ✗ existiert nicht | ✓ | ✓ | versionsspezifisch, über Capability |
+| `ServerLifecycleEvents.SERVER_STARTED/STOPPING` | ✓ | ✓ | ✓ | stable ⇒ shared runtime implementation |
+| `ServerTickEvents.END_SERVER_TICK` | ✓ | ✓ | ✓ | stable |
+| `ClientTickEvents.END_CLIENT_TICK` | ✓ | ✓ | ✓ | stable (client class) |
+| `ServerPlayConnectionEvents.JOIN/DISCONNECT` | ✓ | ✓ | ✓ | stable |
+| `CommandRegistrationCallback` | ✓ (3 parameters) | ✓ | ✓ | stable from 1.19 |
+| `PlayerBlockBreakEvents.BEFORE` | ✓ | ✓ | ✓ | stable |
+| `ServerWorldEvents.LOAD` | ✓ | ✓ | ✓ | stable |
+| `HudRenderCallback` | ✓ (`MatrixStack`) | ✗ signature (`DrawContext`, then `RenderTickCounter`) | ✗ | **unstable** ⇒ per payload via `HudRenderService` |
+| `ItemTooltipCallback` | ✓ | signature extended (`Item.TooltipContext`) | ✗ | **unstable** ⇒ service |
+| `ResourceManagerHelper` | ✓ | ✓ | ✓ | stable |
+| `PayloadTypeRegistry` | ✗ does not exist | ✓ | ✓ | version-specific, via capability |
 
-Diese Tabelle ist Teil der Dokumentation (`docs/common-code.md`) und wird pro Framework-Release gegen die
-Referenzmatrix geprüft — ein Integrationstest kompiliert eine Sonde gegen jede Matrix-Version und meldet
-Signaturabweichungen (`EventStabilityProbeTest`, Kapitel 32.5).
+This table is part of the documentation (`docs/common-code.md`) and is checked against the reference matrix on
+every framework release — an integration test compiles a probe against each matrix version and reports signature
+deviations (`EventStabilityProbeTest`, chapter 32.5).
 
 ---
 
-Weiter mit [Kapitel 20–25 — Gradle-Plugin, DSL, Repository-Struktur, Build-Pipeline, Dependencies, Ressourcen](part-07-gradle.md).
+Continue with [chapters 20–25 — Gradle plugin, DSL, repository structure, build pipeline, dependencies, resources](part-07-gradle.md).

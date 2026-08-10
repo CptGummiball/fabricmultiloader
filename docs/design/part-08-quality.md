@@ -1,35 +1,35 @@
 # 29. Error Handling
 
-## 29.1 Normatives Meldungsformat
+## 29.1 Normative message format
 
-Jede FabricMultiLoader-Meldung — Build-Zeit wie Laufzeit — hat exakt diese Struktur:
+Every FabricMultiLoader message — build time as well as runtime — has exactly this structure:
 
 ```
-<CODE>  <Titel in einer Zeile>
+<CODE>  <one-line title>
 
-  <Was wurde erkannt / welche Objekte sind beteiligt>
+  <what was detected / which objects are involved>
 
-  <Warum ist das ein Problem — eine bis drei Zeilen>
+  <why this is a problem — one to three lines>
 
   Fix:
-    · <konkreter Schritt 1, mit Datei/Zeile/Befehl>
-    · <konkreter Schritt 2>
+    · <concrete step 1, with file/line/command>
+    · <concrete step 2>
 
   Docs: https://fabricmultiloader.dev/docs/errors#<code-lowercase>
 ```
 
-Verbindliche Regeln:
+Binding rules:
 
-1. **Kein Stacktrace ohne Erklärung.** Wo eine `Throwable`-Ursache existiert, wird sie als `cause` angehängt,
-   aber die Message steht *über* dem Stacktrace.
-2. **Kein Fehlercode ohne Doku-Anker.** `docs/errors.md` enthält für jeden Code einen Abschnitt; ein Test
-   (`ErrorCodeDocumentationTest`) prüft, dass jeder in `ErrorCode` definierte Code dort vorkommt und umgekehrt.
-3. **Keine Meldung ohne mindestens einen Fix-Vorschlag.**
-4. **Ist-Zustand immer vollständig.** Erkannte MC-, Loader-, API-, Java-Version und Seite werden in jeder
-   Laufzeitmeldung ausgegeben, auch wenn sie für den konkreten Fehler nicht ursächlich sind — Supportfälle werden
-   damit in einer Runde lösbar.
+1. **No stack trace without an explanation.** Where a `Throwable` cause exists it is attached as `cause`, but the
+   message stands *above* the stack trace.
+2. **No error code without a doc anchor.** `docs/errors.md` has a section for every code; a test
+   (`ErrorCodeDocumentationTest`) checks that every code defined in `ErrorCode` appears there and vice versa.
+3. **No message without at least one suggested fix.**
+4. **The actual state is always complete.** The detected Minecraft, loader, API and Java versions and the side are
+   printed in every runtime message, even when they are not causal for the specific failure — support cases then
+   become solvable in a single round trip.
 
-## 29.2 Die wichtigste Meldung: kein passendes Payload
+## 29.2 The most important message: no matching payload
 
 ```
 OMNI-2003  FabricMultiLoader could not start Universal Example Mod
@@ -68,7 +68,7 @@ OMNI-2003  FabricMultiLoader could not start Universal Example Mod
   Docs: https://fabricmultiloader.dev/docs/errors#omni-2003
 ```
 
-Zweiter, häufigerer Fall — MC passt, aber eine Nebenbedingung nicht:
+A second, more frequent case — MC matches but a side condition does not:
 
 ```
 OMNI-2003  FabricMultiLoader could not start Universal Example Mod
@@ -96,130 +96,130 @@ OMNI-2003  FabricMultiLoader could not start Universal Example Mod
   Docs: https://fabricmultiloader.dev/docs/errors#omni-2003
 ```
 
-Diese Meldung ist der wichtigste Grund, warum der Container **nicht** hart auf den Payload-Alias `depends` —
-der Loader hätte hier nur „requires examplemod-impl which is missing“ gemeldet (Kapitel 11.8).
+This message is the single most important reason why the container does **not** hard-`depends` on the payload
+alias — the loader would only have reported “requires examplemod-impl which is missing” (chapter 11.8).
 
-## 29.3 Vollständiger Fehlercode-Katalog
+## 29.3 Complete error code catalogue
 
-### 1xxx — Build-Zeit (Gradle-Plugin, Validator)
+### 1xxx — build time (Gradle plugin, validator)
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| 1001 | Matrixdatei fehlt oder ist nicht lesbar |
-| 1002 | Unbekanntes Feld im Omni-Manifest |
-| 1010 | Überlappende Payload-Domänen bei gleicher `priority` |
-| 1011 | Manifest-Constraints ≠ Payload-`fabric.mod.json`-Constraints |
-| 1012 | Zwei Payloads unterscheiden sich nur in `requires.mods` |
-| 1013 | Lücke in der MC-Versionsabdeckung (Info) |
-| 1014 | Container-`depends.java` ≠ Minimum der Payloads |
-| 1015 | Payload vollständig von höher priorisierten Payloads verdeckt |
-| 1021 | Handgeschriebene `fabric.mod.json` in Modulressourcen |
-| 1022 | Payload enthält `META-INF/omni-container.json` |
-| 1023 | Container enthält `assets/` oder `data/` |
-| 1024 | Container deklariert `mixins` oder `accessWidener` |
-| 1030 | Mixin-Config-, Refmap- oder AW-Name nicht eindeutig über alle Payloads |
-| 1031 | Referenziertes Refmap fehlt |
-| 1032 | Refmap enthält Klassen, die nicht im Payload liegen |
-| 1033 | Refmap ohne zugehörige Mixin-Config (Warnung) |
-| 1034 | Mixin-Package verletzt Namenskonvention |
-| 1035 | `ConditionalMixinPlugin`-Isolation verletzt (Zugriff auf Runtime-Bootstrap oder MC) |
-| 1036 | Verbotene Referenz: eigener ClassLoader / Loader-Interna |
-| 1040 | Container-Klasse überschreitet `baselineJavaMajor` |
-| 1041 | Payload-Klasse hat abweichenden Classfile-Major |
-| 1042 | Container-Klasse referenziert Minecraft/Fabric-API/Mixin |
-| 1043 | Container-Klasse außerhalb `commonPackages` |
-| 1044 | Package-Überlappung zwischen Payloads oder mit Common |
-| 1045 | Client-Referenz außerhalb eines `clientOnly`-Packages |
-| 1046 | `classfileMajor` unvereinbar mit `requires.java` |
-| 1047 | `baselineJavaMajor` ≠ Minimum der Payload-Java-Anforderungen |
-| 1048 | Genestete Bibliothek mit zu hohem Classfile-Major (Warnung) |
-| 1049 | Multi-Release-Artefakte im Container |
-| 1050 | Offene obere MC-Grenze (Warnung) |
-| 1051 | `javaRange`-Minimum unter der MC-Anforderung (Warnung) |
-| 1060 | Reproduzierbarkeitsverletzung |
-| 1070 | Ressourcen-Digest weicht zwischen Payloads ab (Warnung) |
-| 1080 | Mapping-Inkonsistenz innerhalb eines Payloads |
-| 1081 | `shared`-Versionen mit unterschiedlichem Mapping-Provider |
-| 1082 | AW-Namespace im Payload ≠ `intermediary` |
-| 1083 | Gepinntes Mapping-Layer (Warnung) |
-| 1090 | Erforderliches Toolchain-JDK nicht verfügbar |
-| 1100–1110 | Mixin-Config-Regeln (Kapitel 16.3) |
-| 1120–1124 | Access-Widener-Regeln (Kapitel 17.6) |
-| 1130 | Deklarierte Capability ohne Implementierung |
-| 1140 | Doppelter Entrypoint (DSL + Annotation) |
-| 1141 | Kein `common`-Entrypoint deklariert |
-| 1150 | Common-erreichbarer Code referenziert Client-Package |
-| 1160 | `minecraft` liegt nicht in `minecraftRange` |
-| 1161 | Unbekannter Schlüssel in der Matrixdatei |
-| 1162 | Matrixeintrag ohne Verzeichnis |
-| 1163 | Verzeichnis ohne Matrixeintrag |
-| 1170 | Doppelter ZIP-Eintrag beim Assemblieren |
-| 1180 | `omniMod`-Artefakt ist keine Fabric-Mod |
-| 1181 | Fabric-Mod in `omniIncludeCommon` |
-| 1182 | Zweite Fabric-API-Version im Payload (Warnung) |
-| 1183 | Verbotene Bibliotheksreferenz in `:common` |
-| 1184 | Kotlin ohne `fabric-language-kotlin` (Warnung) |
-| 1185 | MC-abhängige Version im `libs.versions.toml` (Warnung) |
-| 1186 | Klassen-Shadowing zwischen `shared` und Version-Modul |
-| 1187 | `shared`-Versionen mit unterschiedlichem Java-Release |
-| 1200 | Undeklarierter Ressourcen-Override |
-| 1201 | Mixin/AW/Refmap in `common`-Ressourcen |
-| 1202 | Datagen-Entrypoint im Release-Payload |
+| 1001 | Matrix file missing or unreadable |
+| 1002 | Unknown field in the Omni manifest |
+| 1010 | Overlapping payload domains with equal `priority` |
+| 1011 | Manifest constraints ≠ payload `fabric.mod.json` constraints |
+| 1012 | Two payloads differ only in `requires.mods` |
+| 1013 | Gap in Minecraft version coverage (info) |
+| 1014 | Container `depends.java` ≠ minimum of the payloads |
+| 1015 | Payload entirely shadowed by higher-priority payloads |
+| 1021 | Hand-written `fabric.mod.json` in module resources |
+| 1022 | Payload contains `META-INF/omni-container.json` |
+| 1023 | Container contains `assets/` or `data/` |
+| 1024 | Container declares `mixins` or `accessWidener` |
+| 1030 | Mixin config, refmap or AW name not unique across all payloads |
+| 1031 | Referenced refmap missing |
+| 1032 | Refmap contains classes not present in the payload |
+| 1033 | Refmap without a matching mixin config (warning) |
+| 1034 | Mixin package violates the naming convention |
+| 1035 | `ConditionalMixinPlugin` isolation violated (access to the runtime bootstrap or MC) |
+| 1036 | Forbidden reference: custom ClassLoader / loader internals |
+| 1040 | Container class exceeds `baselineJavaMajor` |
+| 1041 | Payload class has a differing class file major |
+| 1042 | Container class references Minecraft/Fabric API/Mixin |
+| 1043 | Container class outside `commonPackages` |
+| 1044 | Package overlap between payloads or with common |
+| 1045 | Client reference outside a `clientOnly` package |
+| 1046 | `classfileMajor` incompatible with `requires.java` |
+| 1047 | `baselineJavaMajor` ≠ minimum of the payload Java requirements |
+| 1048 | Nested library with too high a class file major (warning) |
+| 1049 | Multi-release artifacts in the container |
+| 1050 | Open upper MC bound (warning) |
+| 1051 | `javaRange` minimum below the MC requirement (warning) |
+| 1060 | Reproducibility violation |
+| 1070 | Resource digest differs between payloads (warning) |
+| 1080 | Mapping inconsistency inside a payload |
+| 1081 | `shared` versions with different mapping providers |
+| 1082 | AW namespace in the payload ≠ `intermediary` |
+| 1083 | Pinned mapping layer (warning) |
+| 1090 | Required toolchain JDK unavailable |
+| 1100–1110 | Mixin config rules (chapter 16.3) |
+| 1120–1124 | Access widener rules (chapter 17.6) |
+| 1130 | Declared capability without an implementation |
+| 1140 | Duplicate entrypoint (DSL + annotation) |
+| 1141 | No `common` entrypoint declared |
+| 1150 | Common-reachable code references a client package |
+| 1160 | `minecraft` not inside `minecraftRange` |
+| 1161 | Unknown key in the matrix file |
+| 1162 | Matrix entry without a directory |
+| 1163 | Directory without a matrix entry |
+| 1170 | Duplicate ZIP entry during assembly |
+| 1180 | `omniMod` artifact is not a Fabric mod |
+| 1181 | Fabric mod in `omniIncludeCommon` |
+| 1182 | Second Fabric API version in the payload (warning) |
+| 1183 | Forbidden library reference in `:common` |
+| 1184 | Kotlin without `fabric-language-kotlin` (warning) |
+| 1185 | MC-dependent version in `libs.versions.toml` (warning) |
+| 1186 | Class shadowing between `shared` and a version module |
+| 1187 | `shared` versions with different Java release levels |
+| 1200 | Undeclared resource override |
+| 1201 | Mixin/AW/refmap in `common` resources |
+| 1202 | Datagen entrypoint in a release payload |
 
-### 2xxx — Laufzeit
+### 2xxx — runtime
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| 2001 | Manifest fehlt oder nicht parsbar → Container beschädigt |
-| 2002 | Manifest-Schemaversion oder `minRuntime` > unterstützt |
-| 2003 | Kein passendes Payload |
-| 2004 | Mehrere Payloads gleichzeitig aktiv |
-| 2010 | Minecraft-Mod-Container nicht vorhanden (unbekanntes Launch-Setup) |
-| 2011 | Payload-Deskriptor widerspricht Container-Manifest |
-| 2012 | Manifest-Mod-ID ≠ tragende Mod-ID |
-| 2013 | SHA-256-Prüfung des aktiven Payloads fehlgeschlagen |
-| 2020 | `platformFactory`-Klasse nicht gefunden |
-| 2021 | `platformFactory` hat eine Ausnahme geworfen |
-| 2022 | `platformFactory` implementiert `PlatformFactory` nicht |
-| 2023 | `platformFactory` lieferte `null` |
-| 2030 | Common-Entrypoint-Klasse nicht gefunden |
-| 2031 | Common-Entrypoint hat eine Ausnahme geworfen |
-| 2040 | Payload-Lifecycle-Hook hat eine Ausnahme geworfen |
-| 2100 | Standalone-Payload ohne Container (Info, nur Dev/Slim) |
-| 2101 | Nicht-strikter Modus: Mod bleibt deaktiviert (Warnung) |
-| 2200 | Conditional-Mixin-Config nicht lesbar (Warnung, fail-open) |
-| 2201 | Conditional-Mixin-Entscheidung (Debug) |
+| 2001 | Manifest missing or unparseable → container corrupted |
+| 2002 | Manifest schema version or `minRuntime` > supported |
+| 2003 | No matching payload |
+| 2004 | Several payloads active simultaneously |
+| 2010 | Minecraft mod container absent (unknown launch setup) |
+| 2011 | Payload descriptor contradicts the container manifest |
+| 2012 | Manifest mod ID ≠ carrying mod ID |
+| 2013 | SHA-256 check of the active payload failed |
+| 2020 | `platformFactory` class not found |
+| 2021 | `platformFactory` threw an exception |
+| 2022 | `platformFactory` does not implement `PlatformFactory` |
+| 2023 | `platformFactory` returned `null` |
+| 2030 | Common entrypoint class not found |
+| 2031 | Common entrypoint threw an exception |
+| 2040 | A payload lifecycle hook threw an exception |
+| 2100 | Standalone payload without a container (info, dev/slim only) |
+| 2101 | Non-strict mode: the mod stays deactivated (warning) |
+| 2200 | Conditional mixin config unreadable (warning, fail-open) |
+| 2201 | Conditional mixin decision (debug) |
 
-### 3xxx — Format/Parser
+### 3xxx — format/parser
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| 3001 | Pflichtfeld fehlt (mit JSON-Pointer) |
-| 3002 | Typfehler (mit JSON-Pointer, Soll/Ist) |
-| 3003 | Eingabelimit überschritten (Größe/Tiefe/Anzahl) |
-| 3004 | Ungültige Mod-ID / ungültiger Identifier |
-| 3010 | Versionsstring nicht parsbar (Warnung, `UNKNOWN`) |
-| 3011 | Ungültiges Version-Predicate |
+| 3001 | Required field missing (with a JSON pointer) |
+| 3002 | Type error (with a JSON pointer, expected/actual) |
+| 3003 | Input limit exceeded (size/depth/count) |
+| 3004 | Invalid mod ID / invalid identifier |
+| 3010 | Version string unparseable (warning, `UNKNOWN`) |
+| 3011 | Invalid version predicate |
 
-### 4xxx — API-Missbrauch (Programmierfehler des Modautors)
+### 4xxx — API misuse (a programming error by the mod author)
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| 4001 | Ungültiger Lifecycle-Übergang |
-| 4002 | Registry-/Networking-Aufruf in falscher Phase |
-| 4010 | `ServiceRegistry#get` für nicht registrierten Typ |
-| 4011 | `Capability` nicht verfügbar, aber ohne Prüfung genutzt |
-| 4012 | `unwrap` mit falschem Zieltyp |
-| 4013 | `ChannelHandle#sendToServer` auf dem Server aufgerufen (oder umgekehrt) |
+| 4001 | Invalid lifecycle transition |
+| 4002 | Registry/networking call in the wrong phase |
+| 4010 | `ServiceRegistry#get` for an unregistered type |
+| 4011 | `Capability` unavailable but used without a check |
+| 4012 | `unwrap` with the wrong target type |
+| 4013 | `ChannelHandle#sendToServer` called on the server (or vice versa) |
 
-## 29.4 Exception-Modell
+## 29.4 Exception model
 
 ```java
 package dev.fabricmultiloader.format.error;
 
 public class OmniException extends RuntimeException {
     private final ErrorCode code;
-    private final String report;          // mehrzeilige, formatierte Meldung (kann null sein)
+    private final String report;          // the multi-line formatted message (may be null)
 
     public OmniException(ErrorCode code, String report)                  { … }
     public OmniException(ErrorCode code, String report, Throwable cause) { … }
@@ -230,66 +230,64 @@ public class OmniException extends RuntimeException {
     @Override public String getMessage() { return code.id() + "  " + firstLine() + "\n\n" + report; }
 }
 
-/** Nur für 4xxx: signalisiert einen Fehler im Modcode, nicht im Framework. */
+/** For 4xxx only: signals an error in the mod code, not in the framework. */
 public final class OmniApiMisuseException extends OmniException { … }
 ```
 
-Warum eine `RuntimeException` und keine geprüfte Ausnahme: Der Bootstrap läuft in Fabric-Entrypoints, deren
-Signaturen keine geprüften Ausnahmen erlauben. Die vollständige Message wird von
-`EntrypointUtils`/`FormattedException` unverändert bis in die Fabric-Fehler-GUI bzw. den Serverlog
-durchgereicht — deshalb steckt der komplette Bericht in `getMessage()` und nicht in einem separaten Kanal.
+Why a `RuntimeException` and not a checked exception: the bootstrap runs inside Fabric entrypoints whose signatures
+do not permit checked exceptions. The complete message is passed through unchanged by
+`EntrypointUtils`/`FormattedException` into the Fabric error GUI resp. the server log — which is why the full report
+sits in `getMessage()` and not in a separate channel.
 
-Es wird **keine** Loader-interne Klasse (`net.fabricmc.loader.impl.FormattedException`,
-`FabricGuiEntry`) reflektiv angesprochen. Der Preis: Die GUI zeigt „Mod initialization failed“ als Titel und
-unseren Bericht als Detailtext. Der Gewinn: Die Runtime funktioniert unverändert über alle Loader-Versionen
-0.14–0.17+.
+**No** loader-internal class (`net.fabricmc.loader.impl.FormattedException`, `FabricGuiEntry`) is addressed
+reflectively. The price: the GUI shows “Mod initialization failed” as the title and our report as the detail text.
+The gain: the runtime works unchanged across loader versions 0.14–0.17+.
 
-## 29.5 Strikter und nicht strikter Modus
+## 29.5 Strict and non-strict mode
 
-| Modus | Auslöser | Verhalten bei `OMNI-2003` |
+| Mode | Trigger | Behaviour on `OMNI-2003` |
 |---|---|---|
-| **strict** (Default) | `container.strict = true`, kein Override | `OmniException` aus `preLaunch` ⇒ Spiel startet nicht. Begründung: Eine halb geladene Mod führt zu Folgefehlern, die niemand mehr zuordnen kann. |
-| **lenient** | `container.strict = false` oder `-Dfabricmultiloader.strict=false` | Warnung `OMNI-2101`, Container deaktiviert sich, Spiel startet. Für Server-Admins und Modpack-Ersteller, die eine Mod temporär tolerieren wollen. Der Container registriert **nichts** und `FabricMultiLoader.isActive("examplemod")` liefert `false`. |
-| **verbose-strict** | `-Dfabricmultiloader.strict=verbose` | wie strict, zusätzlich Volldump von Manifest und Umgebung |
+| **strict** (default) | `container.strict = true`, no override | An `OmniException` from `preLaunch` ⇒ the game does not start. Rationale: a half-loaded mod produces follow-on errors nobody can attribute later. |
+| **lenient** | `container.strict = false` or `-Dfabricmultiloader.strict=false` | Warning `OMNI-2101`, the container deactivates itself, the game starts. For server admins and modpack authors who want to tolerate a mod temporarily. The container registers **nothing**, and `FabricMultiLoader.isActive("examplemod")` returns `false`. |
+| **verbose-strict** | `-Dfabricmultiloader.strict=verbose` | Like strict, plus a full dump of the manifest and environment |
 
-Der Systemproperty-Override gilt global; `-Dfabricmultiloader.strict.examplemod=false` erlaubt es pro Mod.
+The system property override is global; `-Dfabricmultiloader.strict.examplemod=false` allows it per mod.
 
-## 29.6 Verhalten bei beschädigter JAR
+## 29.6 Behaviour with a corrupted JAR
 
-| Schaden | Erkennung | Meldung |
+| Damage | Detection | Message |
 |---|---|---|
-| JAR abgeschnitten / kein gültiges ZIP | Fabric `ModDiscoverer` | Loader: „Could not open mod jar“, mit Dateiname |
-| `fabric.mod.json` fehlt | Fabric | Loader-Meldung |
-| `META-INF/omni-container.json` fehlt, aber `MANIFEST.MF` deklariert Omni | Runtime, Container-Scan | `OMNI-2001` inkl. SHA-256 der Datei und Hinweis „erneut herunterladen“ |
-| Payload-Jar entfernt | Fabric (nested Jar in `jars[]` fehlt) | Loader-Meldung; zusätzlich `OMNI-2003`, das das fehlende Payload als „not loaded“ ausweist |
-| Payload manipuliert | Runtime `IntegrityChecker` | `OMNI-2013` mit Soll-/Ist-Hash |
-| Manifest manipuliert (Mod-ID geändert) | Runtime | `OMNI-2012` |
+| JAR truncated / not a valid ZIP | Fabric `ModDiscoverer` | Loader: “Could not open mod jar”, with the file name |
+| `fabric.mod.json` missing | Fabric | loader message |
+| `META-INF/omni-container.json` missing but `MANIFEST.MF` declares Omni | runtime, container scan | `OMNI-2001` including the file's SHA-256 and a “re-download” hint |
+| Payload JAR removed | Fabric (a nested JAR listed in `jars[]` is missing) | loader message; additionally `OMNI-2003`, which lists the missing payload as “not loaded” |
+| Payload tampered with | runtime `IntegrityChecker` | `OMNI-2013` with the expected/actual hash |
+| Manifest tampered with (mod ID changed) | runtime | `OMNI-2012` |
 
 ---
 
 # 30. Diagnostics
 
-## 30.1 Startbanner
+## 30.1 Start banner
 
-Immer, auf `INFO`, eine Zeile pro Container (Kapitel 9.8). Bewusst knapp: Ein Modpack mit 40 Universal-Mods soll
-den Log nicht fluten.
+Always, at `INFO`, one line per container (chapter 9.8). Deliberately terse: a modpack with 40 universal mods must
+not flood the log.
 
-## 30.2 Diagnosebericht
+## 30.2 Diagnostic report
 
-Geschrieben bei jedem Fehlschlag und zusätzlich bei jedem Start, wenn `-Dfabricmultiloader.report=always` gesetzt
-ist. Ort: `<gameDir>/.fabricmultiloader/<modId>-diagnostic.txt`. Atomar (Temp + `ATOMIC_MOVE`).
+Written on every failure, and additionally on every start when `-Dfabricmultiloader.report=always` is set.
+Location: `<gameDir>/.fabricmultiloader/<modId>-diagnostic.txt`. Atomic (temp + `ATOMIC_MOVE`).
 
-Inhalt: Zeitstempel, vollständige Umgebung, Container-Metadaten, alle Payloads mit jedem Constraint und dessen
-Auswertung, Capability-Listen, Liste aller geladenen Mods mit Versionen (alphabetisch), aktive Systemproperties
-mit Präfix `fabricmultiloader.`, sowie — falls vorhanden — der ursächliche Stacktrace.
+Content: timestamp, the complete environment, container metadata, every payload with every constraint and its
+evaluation, capability lists, a list of all loaded mods with versions (alphabetical), active system properties with
+the prefix `fabricmultiloader.`, and — if present — the causal stack trace.
 
-Zusätzlich `<gameDir>/.fabricmultiloader/<modId>-last-launch.json` bei Erfolg (maschinenlesbar, für Modpack-Tools
-und Support-Bots).
+Additionally `<gameDir>/.fabricmultiloader/<modId>-last-launch.json` on success (machine-readable, for modpack tools
+and support bots).
 
-## 30.3 Crash-Report-Integration
+## 30.3 Crash report integration
 
-Minecrafts Crash-Reports unterstützen benutzerdefinierte Abschnitte; die API dafür ist versionsabhängig, deshalb
-liegt sie im Payload:
+Minecraft crash reports support custom sections; the API for that is version-dependent, so it lives in the payload:
 
 ```java
 @Override
@@ -300,23 +298,22 @@ public void installCrashContext(CrashContext ctx) {
 }
 ```
 
-`CrashContextImpl` sammelt die Einträge und der Payload-Adapter hängt sie über die versionsspezifische
-API an (`CrashReportCallables`/`SystemDetails`, je Version unterschiedlich benannt). Ergebnis: In jedem
-Crash-Report steht, welches Payload aktiv war — der wichtigste Datenpunkt für Bugreports einer
-Multi-Version-Mod.
+`CrashContextImpl` collects the entries and the payload adapter attaches them via the version-specific API
+(`CrashReportCallables`/`SystemDetails`, named differently per version). The result: every crash report states which
+payload was active — the single most important data point for bug reports about a multi-version mod.
 
-## 30.4 Debug-Modus
+## 30.4 Debug mode
 
-| Property | Wirkung |
+| Property | Effect |
 |---|---|
-| `-Dfabricmultiloader.debug=true` | Volldump: Manifest, Resolution-Report, Timing pro Phase, Payload-Extraktionspfad, Classloader-Identität |
-| `-Dfabricmultiloader.debug.timing=true` | nur Timing (ns-Auflösung) |
-| `-Dfabricmultiloader.verify=false` | SHA-256-Prüfung aus (für Modpack-Repacks, die Payloads rekomprimieren) |
-| `-Dfabricmultiloader.strict=false\|verbose` | s. 29.5 |
-| `-Dfabricmultiloader.report=always` | Bericht auch bei Erfolg |
-| `-Dfabricmultiloader.slim=true` | erlaubt Standalone-Payload außerhalb Dev |
+| `-Dfabricmultiloader.debug=true` | Full dump: manifest, resolution report, timings per phase, payload extraction path, classloader identity |
+| `-Dfabricmultiloader.debug.timing=true` | Timings only (nanosecond resolution) |
+| `-Dfabricmultiloader.verify=false` | Disables the SHA-256 check (for modpack repacks that recompress payloads) |
+| `-Dfabricmultiloader.strict=false\|verbose` | See 29.5 |
+| `-Dfabricmultiloader.report=always` | Report even on success |
+| `-Dfabricmultiloader.slim=true` | Permits a standalone payload outside dev |
 
-## 30.5 Laufzeit-Introspektion für Dritte
+## 30.5 Runtime introspection for third parties
 
 ```java
 package dev.fabricmultiloader.api;
@@ -326,16 +323,16 @@ public final class FabricMultiLoader {
     public static java.util.Optional<String> activePayload(String containerModId);
     public static java.util.Optional<PlatformInfo> platformInfo(String containerModId);
     public static java.util.List<String> containers();
-    public static String diagnosticReport(String containerModId);   // derselbe Text wie die Datei
+    public static String diagnosticReport(String containerModId);   // the same text as the file
 }
 ```
 
-Zusätzlich pro Container ein ObjectShare-Eintrag `"<modId>:omni"` mit einem `ContainerHandle`, damit fremde Mods
-und Werkzeuge ohne Compile-Abhängigkeit auf die Runtime zugreifen können (reflektiv oder über `instanceof`).
+Additionally, one ObjectShare entry per container, `"<modId>:omni"`, holding a `ContainerHandle`, so foreign mods and
+tools can access the runtime without a compile dependency (reflectively or via `instanceof`).
 
-Der Debug-Befehl `/fmlu` wird von der Runtime über `CommandsImpl` registriert, aber nur, wenn
-`-Dfabricmultiloader.debug=true` gesetzt ist — im Normalbetrieb existiert er nicht, um keine Befehlsnamen zu
-belegen. `/fmlu list`, `/fmlu info <modid>`, `/fmlu report <modid>`.
+The debug command `/fmlu` is registered by the runtime through `CommandsImpl`, but only when
+`-Dfabricmultiloader.debug=true` is set — in normal operation it does not exist, so no command names are occupied.
+`/fmlu list`, `/fmlu info <modid>`, `/fmlu report <modid>`.
 
 ---
 
@@ -343,53 +340,53 @@ belegen. `/fmlu list`, `/fmlu info <modid>`, `/fmlu report <modid>`.
 
 ## 31.1 `./gradlew validateUniversalJar`
 
-Der Validator arbeitet **ausschließlich auf der fertigen JAR** — nicht auf Gradle-Modellen. Damit prüft er das
-Artefakt, das tatsächlich veröffentlicht wird, und kann auch auf fremde Universal-JARs angewendet werden
+The validator works **exclusively on the finished JAR** — not on Gradle models. It therefore checks the artifact
+that is actually published, and it can also be applied to foreign universal JARs
 (`./gradlew validateExternalJar --jar=path/to/foo-universal.jar`).
 
-Ausgabe: `build/reports/omni/validation.txt` (menschenlesbar), `validation.json` (maschinenlesbar, für CI-Annots),
-Exit-Code ≠ 0 bei Fehlern, konfigurierbar auch bei Warnungen (`validation { failOnWarnings }`).
+Output: `build/reports/omni/validation.txt` (human-readable), `validation.json` (machine-readable, for CI
+annotations), a non-zero exit code on errors, optionally also on warnings (`validation { failOnWarnings }`).
 
-## 31.2 Die 34 Regeln
+## 31.2 The 34 rules
 
-| # | Regel | Codes | Schwere |
+| # | Rule | Codes | Severity |
 |---|---|---|---|
-| 1 | Struktur: `fabric.mod.json`, `META-INF/omni-container.json`, `MANIFEST.MF` vorhanden und konsistent | 2001, 1002 | Fehler |
-| 2 | Manifest gegen Schema `omni/1` gültig, keine unbekannten Felder | 1002, 3001, 3002 | Fehler |
-| 3 | Alle im Manifest deklarierten Payloads existieren als ZIP-Einträge | 1170 | Fehler |
-| 4 | Alle Payload-Einträge sind in `fabric.mod.json.jars[]` deklariert und umgekehrt | 1011 | Fehler |
-| 5 | SHA-256 und Größe jedes Payloads stimmen | 2013 | Fehler |
-| 6 | Payload-Domänen sind paarweise disjunkt | 1010, 1012, 1015 | Fehler |
-| 7 | Manifest-Constraints == Payload-`fabric.mod.json`-`depends` | 1011 | Fehler |
-| 8 | Container-`depends.minecraft` == Union der effektiven Payload-Ranges | 1011 | Fehler |
-| 9 | Container-`depends.java` == Minimum der Payload-Java-Minima | 1014, 1047 | Fehler |
-| 10 | Lückenanalyse der MC-Abdeckung | 1013 | Info |
-| 11 | Offene obere MC-Grenzen | 1050 | Warnung |
-| 12 | Container enthält keine `assets/`, `data/` | 1023 | Fehler |
-| 13 | Container deklariert keine `mixins`, keinen `accessWidener` | 1024 | Fehler |
-| 14 | Container-Klassen liegen nur in `commonPackages` | 1043 | Fehler |
-| 15 | Container-Klassen referenzieren kein Minecraft/Fabric-API/Mixin | 1042 | Fehler |
-| 16 | Container-Classfile-Majors ≤ `baselineJavaMajor` | 1040 | Fehler |
-| 17 | Payload-Classfile-Majors == `classfileMajor` und passend zu `requires.java` | 1041, 1046 | Fehler |
-| 18 | Keine Multi-Release-Strukturen | 1049 | Fehler |
-| 19 | Package-Disjunktheit zwischen allen Payloads und Common | 1044 | Fehler |
-| 20 | Jede Mixin-Config des Payloads ist registriert und existiert | 1109, 1110 | Fehler |
-| 21 | Mixin-Config-Regeln (Package, Klassenliste, `required`, `compatibilityLevel`) | 1100–1107 | Fehler |
-| 22 | Refmap vorhanden, valide, nur eigene Klassen | 1031, 1032, 1033 | Fehler/Warnung |
-| 23 | Config-, Refmap- und AW-Namen über alle Payloads eindeutig | 1030 | Fehler |
-| 24 | AW im Payload hat Namespace `intermediary` und ist deklariert | 1082, 1123 | Fehler |
-| 25 | AW-Ziele in den Mappings des Payloads auflösbar | 1121 | Warnung |
-| 26 | Client-Referenzen nur in `clientOnly`-Packages; kein Common-Pfad dorthin | 1045, 1150 | Fehler |
-| 27 | Client-Mixins nur in `environment: client`-Configs | 1105, 1106 | Fehler |
-| 28 | Entrypoints: mindestens ein `common`, alle Klassen im Container vorhanden, korrektes Interface | 1141, 2030 | Fehler |
-| 29 | `platformFactory` jedes Payloads existiert im Payload und implementiert `PlatformFactory` | 2020, 2022 | Fehler |
-| 30 | Deklarierte Capabilities werden von der Platform-Klasse bedient | 1130 | Warnung |
-| 31 | Keine unerwarteten Duplikate (identische Pfade aus mehreren Quellen), keine Signaturdateien, keine leeren Verzeichnisse | 1170 | Fehler |
-| 32 | Keine verbotenen Referenzen (eigener ClassLoader, Loader-Interna) in Container und Payloads | 1036 | Fehler |
-| 33 | Runtime-Mod eingebettet, Version im `depends`-Bereich, Hash korrekt | 1011 | Fehler |
-| 34 | Reproduzierbarkeit: Zeitstempel, Eintragsreihenfolge, Kompressionsmethoden wie spezifiziert | 1060 | Fehler |
+| 1 | Structure: `fabric.mod.json`, `META-INF/omni-container.json`, `MANIFEST.MF` present and consistent | 2001, 1002 | error |
+| 2 | Manifest valid against schema `omni/1`, no unknown fields | 1002, 3001, 3002 | error |
+| 3 | Every payload declared in the manifest exists as a ZIP entry | 1170 | error |
+| 4 | Every payload entry is declared in `fabric.mod.json.jars[]` and vice versa | 1011 | error |
+| 5 | SHA-256 and size of every payload match | 2013 | error |
+| 6 | Payload domains are pairwise disjoint | 1010, 1012, 1015 | error |
+| 7 | Manifest constraints == payload `fabric.mod.json` `depends` | 1011 | error |
+| 8 | Container `depends.minecraft` == union of the effective payload ranges | 1011 | error |
+| 9 | Container `depends.java` == minimum of the payload Java minima | 1014, 1047 | error |
+| 10 | Gap analysis of MC coverage | 1013 | info |
+| 11 | Open upper MC bounds | 1050 | warning |
+| 12 | The container contains no `assets/`, `data/` | 1023 | error |
+| 13 | The container declares no `mixins`, no `accessWidener` | 1024 | error |
+| 14 | Container classes reside only in `commonPackages` | 1043 | error |
+| 15 | Container classes reference no Minecraft/Fabric API/Mixin | 1042 | error |
+| 16 | Container class file majors ≤ `baselineJavaMajor` | 1040 | error |
+| 17 | Payload class file majors == `classfileMajor` and consistent with `requires.java` | 1041, 1046 | error |
+| 18 | No multi-release structures | 1049 | error |
+| 19 | Package disjointness across all payloads and common | 1044 | error |
+| 20 | Every mixin config of the payload is registered and exists | 1109, 1110 | error |
+| 21 | Mixin config rules (package, class list, `required`, `compatibilityLevel`) | 1100–1107 | error |
+| 22 | Refmap present, valid, containing only own classes | 1031, 1032, 1033 | error/warning |
+| 23 | Config, refmap and AW names unique across all payloads | 1030 | error |
+| 24 | The payload AW has namespace `intermediary` and is declared | 1082, 1123 | error |
+| 25 | AW targets resolvable in the payload's mappings | 1121 | warning |
+| 26 | Client references only in `clientOnly` packages; no common path leads there | 1045, 1150 | error |
+| 27 | Client mixins only in `environment: client` configs | 1105, 1106 | error |
+| 28 | Entrypoints: at least one `common`, all classes present in the container, correct interface | 1141, 2030 | error |
+| 29 | Every payload's `platformFactory` exists in the payload and implements `PlatformFactory` | 2020, 2022 | error |
+| 30 | Declared capabilities are served by the platform class | 1130 | warning |
+| 31 | No unexpected duplicates (identical paths from several sources), no signature files, no empty directories | 1170 | error |
+| 32 | No forbidden references (custom ClassLoader, loader internals) in container and payloads | 1036 | error |
+| 33 | Runtime mod embedded, version inside the `depends` range, hash correct | 1011 | error |
+| 34 | Reproducibility: timestamps, entry order, compression methods as specified | 1060 | error |
 
-## 31.3 Beispielausgabe
+## 31.3 Example output
 
 ```
 FabricMultiLoader Validation Report
@@ -436,189 +433,188 @@ RULES   34 executed · 34 passed · 0 failed · 2 warnings · 1 info
 RESULT  PASS (0 errors)
 ```
 
-## 31.4 Regelabschaltung mit Begründungspflicht
+## 31.4 Disabling rules with a mandatory justification
 
 ```kotlin
 validation {
-    ignore("OMNI-1121", because = "AW-Ziel existiert nur ab 1.21; Eintrag bleibt für Klarheit im shared-AW")
+    ignore("OMNI-1121", because = "AW target exists only from 1.21; the entry stays in the shared AW for clarity")
 }
 ```
 
-`because` ist ein Pflichtparameter. Ignorierte Regeln werden im Report als `IGNORED` mit Begründung aufgeführt,
-damit ein Reviewer sie sieht. Regeln der Klasse „Fehler“ mit Sicherheitsrelevanz (5, 6, 7, 8, 9, 16, 17, 19, 32)
-sind **nicht** abschaltbar (`OMNI-1003`).
+`because` is a mandatory parameter. Ignored rules are listed in the report as `IGNORED` with their justification so
+a reviewer sees them. Error-class rules with safety relevance (5, 6, 7, 8, 9, 16, 17, 19, 32) are **not** disableable
+(`OMNI-1003`).
 
 ---
 
 # 32. Testing
 
-## 32.1 Teststufen
+## 32.1 Test levels
 
-| Stufe | Umfang | Laufzeit | Ort |
+| Level | Scope | Duration | Location |
 |---|---|---|---|
-| **T1 Unit** | `format`, `runtime` (ohne Minecraft), `gradle-plugin`-Logik | < 20 s | `*/src/test/java` |
-| **T2 Gradle-Funktionstests** | TestKit: echte Builds synthetischer Projekte | < 4 min | `gradle-plugin/src/functionalTest` |
-| **T3 Loader-Conformance** | echter Fabric Loader gegen synthetische Container über die Loader-Matrix | < 5 min | `testing/src/conformanceTest` |
-| **T4 Integration** | echte Minecraft-Server pro Matrixversion mit der echten Universal-JAR | 8–20 min | `example` + `ServerBootTestTask` |
-| **T5 Client-Smoke** | echter Minecraft-Client bis zum Titelbildschirm (Xvfb) | 10–25 min | CI-only |
+| **T1 unit** | `format`, `runtime` (without Minecraft), `gradle-plugin` logic | < 20 s | `*/src/test/java` |
+| **T2 Gradle functional** | TestKit: real builds of synthetic projects | < 4 min | `gradle-plugin/src/functionalTest` |
+| **T3 loader conformance** | the real Fabric Loader against synthetic containers across the loader matrix | < 5 min | `testing/src/conformanceTest` |
+| **T4 integration** | real Minecraft servers per matrix version with the real universal JAR | 8–20 min | `example` + `ServerBootTestTask` |
+| **T5 client smoke** | a real Minecraft client up to the title screen (Xvfb) | 10–25 min | CI only |
 
-## 32.2 T1 — Unit-Tests (konkrete Testklassen)
+## 32.2 T1 — unit tests (concrete test classes)
 
 `format`:
 
-| Testklasse | Prüft |
+| Test class | Checks |
 |---|---|
-| `SemVerParseTest` | alle Normalisierungsregeln aus Kapitel 12.2 (Tabelle als parametrisierter Test) |
-| `SemVerCompareTest` | SemVer-2.0.0-Ordnung inkl. Prerelease, Build-Neutralität, `UNKNOWN` |
-| `VersionPredicateParseTest` | `*`, `=`, `>=`, `>`, `<=`, `<`, AND-Ketten, Fehlerfälle (`OMNI-3011`) |
-| `VersionPredicateEquivalenceTest` | **differenziell gegen `net.fabricmc.loader.api…VersionPredicate`**, 4096 generierte Fälle × jede Loader-Version der Matrix |
-| `VersionRangeAlgebraTest` | union/intersect/subtract, Grenzfälle an Prerelease-Grenzen, Idempotenz, Kommutativität |
-| `DomainDisjunctifierTest` | 30 Szenarien inkl. „mc1214 schlägt mcModern“, Java-Varianten, client/server-Varianten, `OMNI-1015` |
-| `ManifestReaderTest` | Pflichtfelder, Typfehler mit Pointer, unbekannte Felder, Limits (`OMNI-3003`) |
-| `ManifestRoundTripTest` | Read→Write→Read ist bytegleich; kanonische Schlüsselreihenfolge |
-| `JsonParserTest` | RFC-8259-Suite, Positionsangaben, Limits |
-| `PayloadMatcherTest` | jede Constraint-Art einzeln und kombiniert; Vollständigkeit der Rejection-Liste |
-| `UnionNormalizationTest` | Verschmelzung angrenzender Intervalle, kanonische Predicate-Ausgabe |
-| `Sha256Test` | Streaming-Hash gegen JDK-Referenz |
-| `JavaVersionsTest` | 8/11/17/21/25/30, `1.8.0_402`, Classfile-Major-Formel |
-| `ErrorCodeDocumentationTest` | jeder Code hat einen Doku-Abschnitt und umgekehrt |
-| `MessagesSnapshotTest` | Golden-File-Vergleich der formatierten Meldungen (fängt versehentliche Textänderungen) |
+| `SemVerParseTest` | all normalisation rules from chapter 12.2 (the table as a parameterised test) |
+| `SemVerCompareTest` | SemVer 2.0.0 ordering including prereleases, build neutrality, `UNKNOWN` |
+| `VersionPredicateParseTest` | `*`, `=`, `>=`, `>`, `<=`, `<`, AND chains, failure cases (`OMNI-3011`) |
+| `VersionPredicateEquivalenceTest` | **differentially against `net.fabricmc.loader.api…VersionPredicate`**, 4096 generated cases × every loader version in the matrix |
+| `VersionRangeAlgebraTest` | union/intersect/subtract, edge cases at prerelease boundaries, idempotence, commutativity |
+| `DomainDisjunctifierTest` | 30 scenarios including “mc1214 beats mcModern”, Java variants, client/server variants, `OMNI-1015` |
+| `ManifestReaderTest` | required fields, type errors with pointers, unknown fields, limits (`OMNI-3003`) |
+| `ManifestRoundTripTest` | read→write→read is byte-identical; canonical key order |
+| `JsonParserTest` | the RFC 8259 suite, position information, limits |
+| `PayloadMatcherTest` | every constraint kind individually and combined; completeness of the rejection list |
+| `UnionNormalizationTest` | merging of adjacent intervals, canonical predicate output |
+| `Sha256Test` | streaming hash against the JDK reference |
+| `JavaVersionsTest` | 8/11/17/21/25/30, `1.8.0_402`, the class file major formula |
+| `ErrorCodeDocumentationTest` | every code has a doc section and vice versa |
+| `MessagesSnapshotTest` | golden-file comparison of the formatted messages (catches accidental text changes) |
 
-`runtime` (mit `fabricmultiloader-testing`):
+`runtime` (with `fabricmultiloader-testing`):
 
-| Testklasse | Prüft |
+| Test class | Checks |
 |---|---|
-| `EnvironmentDetectorTest` | gegen `FakeFabricLoader` (Interface-Fassade, in `testing`) |
-| `ContainerDiscoveryTest` | mehrere Container, kein Container, defektes Manifest |
-| `PayloadActivationTest` | genau-eins, keins, mehrere (`OMNI-2003/2004`) |
-| `LifecycleStateMachineTest` | erlaubte/verbotene Übergänge, Idempotenz, `OMNI-4001` |
-| `IntegrityCheckerTest` | korrekter/falscher Hash, abgeschaltete Prüfung |
-| `DevFallbackTest` | Standalone-Payload in Dev und mit `-Dfabricmultiloader.slim=true` |
-| `DiagnosticReportTest` | Golden-File der beiden Berichte aus Kapitel 29.2 |
-| `ConditionalMixinPluginTest` | Bedingungsauswertung, fail-open bei defekter Config |
-| `LogBridgeTest` | mit und ohne SLF4J auf dem Classpath (zwei Classpath-Varianten via Surefire-Profile) |
+| `EnvironmentDetectorTest` | against `FakeFabricLoader` (an interface façade in `testing`) |
+| `ContainerDiscoveryTest` | several containers, no container, a broken manifest |
+| `PayloadActivationTest` | exactly one, none, several (`OMNI-2003/2004`) |
+| `LifecycleStateMachineTest` | permitted/forbidden transitions, idempotence, `OMNI-4001` |
+| `IntegrityCheckerTest` | correct/incorrect hash, check disabled |
+| `DevFallbackTest` | standalone payload in dev and with `-Dfabricmultiloader.slim=true` |
+| `DiagnosticReportTest` | golden files of the two reports from chapter 29.2 |
+| `ConditionalMixinPluginTest` | condition evaluation, fail-open on a broken config |
+| `LogBridgeTest` | with and without SLF4J on the classpath (two classpath variants via Surefire profiles) |
 
-`gradle-plugin` (T1-Anteil, ohne Gradle-Runtime):
+`gradle-plugin` (the T1 portion, without the Gradle runtime):
 
 `MatrixParserTest`, `ClassfileScannerTest`, `ReferenceScannerTest`, `ResourceMergePlanTest`,
 `AccessWidenerMergeTest`, `RuleSetTest`, `ReportFormatterTest`, `ManifestGeneratorTest`,
-`ModJsonGeneratorTest` (Golden Files für beide `fabric.mod.json`-Varianten).
+`ModJsonGeneratorTest` (golden files for both `fabric.mod.json` variants).
 
-## 32.3 T2 — Gradle-Funktionstests (TestKit)
+## 32.3 T2 — Gradle functional tests (TestKit)
 
-| Test | Szenario | Erwartung |
+| Test | Scenario | Expectation |
 |---|---|---|
-| `MinimalProjectTest` | 1 Payload, kein Mixin, keine AW | Build grün, JAR-Struktur exakt wie spezifiziert |
-| `ThreeVersionProjectTest` | 1.20.1/1.21.1/1.21.4 | 3 Payloads, disjunkte Ranges, Union korrekt |
-| `MixedJavaProjectTest` | Java 17 + 21 + 25 Payloads | Classfile-Majors 61/65/69, Container 61, `depends.java >=17` |
-| `OverlapRejectedTest` | überlappende Ranges, gleiche Priorität | Build scheitert mit `OMNI-1010`, Meldungstext geprüft |
-| `PrioritySubtractionTest` | catch-all + spezifisch | effektive Ranges wie in Kapitel 12.7 |
-| `ResourceOverrideTest` | undeklarierter Override bei `strictOverrides` | `OMNI-1200` |
-| `LangMergeTest` | `mergeLanguageFiles` | Schlüsselvereinigung, sortierte Ausgabe |
-| `ContainerPurityTest` | MC-Import in `:common` | `OMNI-1042` |
-| `ReproducibilityTest` | zweimal bauen | identischer SHA-256 |
-| `ConfigurationCacheTest` | `--configuration-cache` zweimal | zweiter Lauf „reused“, 0 Probleme |
-| `UpToDateTest` | zweiter Lauf ohne Änderung | alle Tasks `UP-TO-DATE` |
-| `AddVersionTaskTest` | `addMinecraftVersion` | Matrixeintrag, Verzeichnis, Stubs, danach grüner Build |
-| `SlimJarTest` | `buildSlimJars` | ein lauffähiges Standalone-Jar pro Payload |
+| `MinimalProjectTest` | 1 payload, no mixins, no AW | green build, JAR structure exactly as specified |
+| `ThreeVersionProjectTest` | 1.20.1/1.21.1/1.21.4 | 3 payloads, disjoint ranges, correct union |
+| `MixedJavaProjectTest` | Java 17 + 21 + 25 payloads | class file majors 61/65/69, container 61, `depends.java >=17` |
+| `OverlapRejectedTest` | overlapping ranges, equal priority | the build fails with `OMNI-1010`, message text asserted |
+| `PrioritySubtractionTest` | catch-all + specific | effective ranges as in chapter 12.7 |
+| `ResourceOverrideTest` | an undeclared override with `strictOverrides` | `OMNI-1200` |
+| `LangMergeTest` | `mergeLanguageFiles` | key union, sorted output |
+| `ContainerPurityTest` | an MC import in `:common` | `OMNI-1042` |
+| `ReproducibilityTest` | building twice | identical SHA-256 |
+| `ConfigurationCacheTest` | `--configuration-cache` twice | the second run reports “reused”, 0 problems |
+| `UpToDateTest` | a second run without changes | all tasks `UP-TO-DATE` |
+| `AddVersionTaskTest` | `addMinecraftVersion` | matrix entry, directory, stubs, then a green build |
+| `SlimJarTest` | `buildSlimJars` | one runnable standalone JAR per payload |
 
-## 32.4 T3 — Loader-Conformance-Harness (die tragende Annahme)
+## 32.4 T3 — the loader conformance harness (the load-bearing assumption)
 
-Ziel: Beweisen, dass jede unterstützte Fabric-Loader-Version genestete Mods mit unerfüllbaren `depends`
-**verwirft statt zu scheitern**.
+Goal: prove that every supported Fabric Loader version **discards** nested mods with unsatisfiable `depends`
+instead of failing.
 
 ```java
 // testing/src/main/java/dev/fabricmultiloader/testing/LoaderConformanceHarness.java
 public final class LoaderConformanceHarness {
     /**
-     * Baut einen synthetischen Container mit N Payloads, startet den echten Fabric Loader
-     * headless (ohne Minecraft: eigener GameProvider-freier Testpfad über
-     * net.fabricmc.loader.impl.discovery + ModSolver, aufgerufen als Bibliothek),
-     * und liefert die Menge der ausgewählten Mod-IDs.
+     * Builds a synthetic container with N payloads, starts the real Fabric Loader
+     * headlessly (without Minecraft: a dedicated GameProvider-free test path through
+     * net.fabricmc.loader.impl.discovery + ModSolver, invoked as a library),
+     * and returns the set of selected mod IDs.
      */
     public Set<String> resolve(LoaderVersion loader, SyntheticContainer container, FakeEnv env);
 }
 ```
 
-Realisierung: Der Loader wird als **Bibliothek** (`net.fabricmc:fabric-loader:<v>`) in einen isolierten
-`URLClassLoader` des Testprozesses geladen — das ist der einzige Ort im Projekt, an dem ein eigener ClassLoader
-existiert, und er liegt ausschließlich im Testcode (Validator-Regel 32 gilt für Produktionsartefakte). Die
-Interaktion erfolgt reflektiv über die `impl`-Klassen; bricht ein Loader-Update diese Reflection, schlägt der
-Test fehl und die Annahme wird manuell nachgeprüft — genau das gewünschte Frühwarnsystem.
+Realisation: the loader is loaded as a **library** (`net.fabricmc:fabric-loader:<v>`) into an isolated
+`URLClassLoader` of the test process — the only place in the project where a custom ClassLoader exists, and it lives
+exclusively in test code (validator rule 32 applies to production artifacts). Interaction happens reflectively via
+the `impl` classes; if a loader update breaks that reflection, the test fails and the assumption is re-checked
+manually — exactly the desired early warning system.
 
-| Conformance-Test | Erwartung |
+| Conformance test | Expectation |
 |---|---|
-| `NestedUnsatisfiableIsDropped` | Payload mit `minecraft 1.20.1` wird auf MC 1.21.4 verworfen, Container lädt |
-| `ExactlyOneSelected` | Bei drei disjunkten Payloads wird genau eines gewählt |
-| `ProvidesExclusivity` | Zwei Payloads mit gleichem `provides` können nie beide geladen werden |
-| `BreaksExclusivity` | wechselseitige `breaks` werden respektiert |
-| `JavaDependencyEvaluated` | `depends.java >=21` verwirft das Payload auf Java 17 |
-| `EnvironmentEvaluated` | `environment: client` wird auf dem Server nicht geladen |
-| `RuntimeDeduplication` | Zwei Container mit Runtime 1.0.0 und 1.1.0 ⇒ nur 1.1.0 geladen |
-| `ContainerRangeError` | MC außerhalb der Union ⇒ Loader-Fehler mit den Bereichen im Text |
+| `NestedUnsatisfiableIsDropped` | A payload with `minecraft 1.20.1` is discarded on MC 1.21.4, the container loads |
+| `ExactlyOneSelected` | With three disjoint payloads, exactly one is selected |
+| `ProvidesExclusivity` | Two payloads with the same `provides` can never both be loaded |
+| `BreaksExclusivity` | Mutual `breaks` are respected |
+| `JavaDependencyEvaluated` | `depends.java >=21` discards the payload on Java 17 |
+| `EnvironmentEvaluated` | `environment: client` is not loaded on the server |
+| `RuntimeDeduplication` | Two containers with runtime 1.0.0 and 1.1.0 ⇒ only 1.1.0 loads |
+| `ContainerRangeError` | MC outside the union ⇒ a loader error with the ranges in its text |
 
-Matrix: Loader `0.14.21`, `0.15.11`, `0.16.9`, `0.16.14`, `0.17.x` (jeweils die neueste Patchversion) —
-in CI täglich (`schedule`) und bei jedem Release. Ein neuer Loader wird damit **vor** den Nutzern getestet.
+Matrix: loaders `0.14.21`, `0.15.11`, `0.16.9`, `0.16.14`, `0.17.x` (the newest patch of each) — nightly in CI
+(`schedule`) and on every release. A new loader is therefore tested **before** users are.
 
-## 32.5 T4 — Integrationstests mit echten Minecraft-Servern
+## 32.5 T4 — integration tests with real Minecraft servers
 
-`ServerBootTestTask` pro Payload:
+`ServerBootTestTask` per payload:
 
 ```
-1. Arbeitsverzeichnis  build/omni/itest/<payloadId>/   (leer)
-2. Fabric-Server-Launcher erzeugen:
+1. working directory  build/omni/itest/<payloadId>/   (empty)
+2. create the Fabric server launcher:
      java -jar fabric-installer-1.0.3.jar server \
           -mcversion <matrix.minecraft> -loader <matrix.loader> \
           -dir . -downloadMinecraft
-3. eula.txt schreiben (nur wenn integrationTests.acceptEula = true;
-   sonst Task-Fehler mit Erklärung)
+3. write eula.txt (only when integrationTests.acceptEula = true;
+   otherwise the task fails with an explanation)
 4. server.properties: level-type=flat, online-mode=false, max-players=1,
    view-distance=4, spawn-protection=0, level-seed=omni
-5. mods/ füllen:
-     · examplemod-2.0.0-universal.jar          (das echte Artefakt)
+5. populate mods/:
+     · examplemod-2.0.0-universal.jar          (the real artifact)
      · fabric-api-<matrix.fabricApi>.jar
-     · pro [versions.X.dependencies] mit Range: die deklarierte Mod
-     · omni-itest-probe.jar                    (aus fabricmultiloader-testing)
-6. Start: java -Xmx2G -Dfabricmultiloader.report=always -jar fabric-server-launch.jar nogui
-7. Die Probe-Mod:
-     · liest FabricMultiLoader.activePayload("examplemod")
-     · prüft erwartete payloadId (per -Domni.itest.expect=mc1214)
-     · prüft, dass genau ein Payload geladen ist
-     · lässt <ticks> Ticks laufen, ruft dann einen Mod-Command über die
-       Server-Konsole auf (/ruby info) und prüft die Antwort im Log
-     · schreibt build/omni/itest/<id>/result.json und stoppt den Server
-8. Task prüft: Exitcode 0, result.json.status == "ok",
-   Log frei von "OMNI-2", "Mixin apply failed", "Exception in thread"
+     · one mod per [versions.X.dependencies] entry with a range
+     · omni-itest-probe.jar                    (from fabricmultiloader-testing)
+6. start: java -Xmx2G -Dfabricmultiloader.report=always -jar fabric-server-launch.jar nogui
+7. the probe mod:
+     · reads FabricMultiLoader.activePayload("examplemod")
+     · asserts the expected payloadId (via -Domni.itest.expect=mc1214)
+     · asserts that exactly one payload is loaded
+     · runs <ticks> ticks, then invokes a mod command via the server console
+       (/ruby info) and checks the response in the log
+     · writes build/omni/itest/<id>/result.json and stops the server
+8. the task checks: exit code 0, result.json.status == "ok",
+   the log free of "OMNI-2", "Mixin apply failed", "Exception in thread"
 ```
 
-Der Test verwendet die **identische** Universal-JAR für alle Payloads — genau der im Auftrag geforderte Nachweis
-„dieselbe Datei in jeder Umgebung“.
+The test uses the **identical** universal JAR for all payloads — exactly the proof demanded by the brief, “the same
+file in every environment”.
 
-| Testfall | Umgebung |
+| Test case | Environment |
 |---|---|
-| `itest mc1201` | MC 1.20.1, Java 17, Loader 0.14.21, Fabric API 0.92.2 |
-| `itest mc1211` | MC 1.21.1, Java 21, Loader 0.15.11, Fabric API 0.102.0 |
-| `itest mc1214` | MC 1.21.4, Java 21, Loader 0.16.9, Fabric API 0.114.0 |
-| `itest unsupported` | MC 1.19.2 ⇒ erwarteter kontrollierter Abbruch, Log **muss** die Bereichsliste enthalten und **darf keinen** `NoClassDefFoundError` enthalten |
-| `itest wrongJava` | MC 1.21.4 mit Java 17 gestartet ⇒ Loader lehnt ab; Log enthält Java-Anforderung |
-| `itest oldFabricApi` | MC 1.21.4 mit Fabric API 0.110.0 ⇒ `OMNI-2003` mit korrekter Begründung |
-| `itest lenient` | wie `unsupported`, aber `-Dfabricmultiloader.strict=false` ⇒ Server startet, `OMNI-2101` im Log |
+| `itest mc1201` | MC 1.20.1, Java 17, loader 0.14.21, Fabric API 0.92.2 |
+| `itest mc1211` | MC 1.21.1, Java 21, loader 0.15.11, Fabric API 0.102.0 |
+| `itest mc1214` | MC 1.21.4, Java 21, loader 0.16.9, Fabric API 0.114.0 |
+| `itest unsupported` | MC 1.19.2 ⇒ the expected controlled abort; the log **must** contain the range list and **must not** contain a `NoClassDefFoundError` |
+| `itest wrongJava` | MC 1.21.4 started with Java 17 ⇒ the loader refuses; the log contains the Java requirement |
+| `itest oldFabricApi` | MC 1.21.4 with Fabric API 0.110.0 ⇒ `OMNI-2003` with the correct reason |
+| `itest lenient` | as `unsupported`, but with `-Dfabricmultiloader.strict=false` ⇒ the server starts, `OMNI-2101` in the log |
 
-## 32.6 T5 — Client-Smoke-Test
+## 32.6 T5 — client smoke test
 
-Der Client wird bis `ClientLifecycleEvents.CLIENT_STARTED` gebootet (dieses Event existiert stabil ab 1.16), die
-Probe-Mod ruft dann `MinecraftClient#scheduleStop`. Ausführung unter `xvfb-run` auf Linux; Software-Rendering
-über Mesa/llvmpipe. Für MC-Versionen, in denen Fabric die Client-Gametest-API anbietet, wird zusätzlich ein
-Titelbildschirm-Screenshot als CI-Artefakt gespeichert.
+The client is booted up to `ClientLifecycleEvents.CLIENT_STARTED` (this event has been stable since 1.16); the probe
+mod then calls `MinecraftClient#scheduleStop`. Execution runs under `xvfb-run` on Linux with software rendering via
+Mesa/llvmpipe. For MC versions where Fabric offers the client gametest API, a title screen screenshot is additionally
+stored as a CI artifact.
 
-Der Client-Test ist **nicht** blockierend für Releases (er ist in CI als `continue-on-error: false` nur auf
-`main` aktiv, aber mit dokumentiertem Retry), weil GPU-lose Client-Starts in CI historisch instabil sind. Der
-Server-Test ist blockierend.
+The client test is **not** release-blocking (in CI it runs with `continue-on-error: false` only on `main`, but with a
+documented retry), because GPU-less client starts have historically been flaky. The server test is blocking.
 
-## 32.7 Testhilfen für Modentwickler (`fabricmultiloader-testing`)
+## 32.7 Test helpers for mod developers (`fabricmultiloader-testing`)
 
 ```java
-// Unit-Test von Common-Code ohne Minecraft
+// unit test of common code without Minecraft
 ModContext ctx = FakeModContext.builder()
         .modId("examplemod").modVersion("2.0.0")
         .minecraft("1.21.4").fabricApi("0.114.0").java(21).side(Side.SERVER)
@@ -632,10 +628,9 @@ assertThat(ctx.recordedItems()).containsKey(Id.of("examplemod", "ruby"));
 assertThat(ctx.recordedChannels()).contains(Id.of("examplemod", "ruby_sync"));
 ```
 
-`FakeModContext` zeichnet alle Registrierungen, Kanäle, Commands und Event-Abonnements auf. Damit ist der
-gesamte Common-Code — also der Großteil der Modlogik — **ohne Minecraft und ohne Loom** testbar, in
-Millisekunden. Das ist ein Nebenprodukt der Architektur (P1: keine MC-Typen in der Common-API) und ein echtes
-Argument für Modautoren.
+`FakeModContext` records all registrations, channels, commands and event subscriptions. The entire common code —
+i.e. the bulk of the mod logic — is therefore testable **without Minecraft and without Loom**, in milliseconds. That
+is a by-product of the architecture (P1: no MC types in the common API) and a genuine argument for mod authors.
 
 ---
 
@@ -643,15 +638,15 @@ Argument für Modautoren.
 
 ## 33.1 Workflows
 
-| Workflow | Trigger | Zweck |
+| Workflow | Trigger | Purpose |
 |---|---|---|
-| `build.yml` | push, pull_request | Framework bauen, T1+T2, Beispielmod bauen + validieren |
-| `integration.yml` | push auf `main`, pull_request mit Label `integration`, nightly | T4 + T5 über die Matrix |
-| `conformance.yml` | nightly, manuell, Release | T3 über die Loader-Matrix |
-| `release.yml` | Tag `v*` | Vollpipeline + Maven-, Modrinth-, CurseForge-, GitHub-Release |
-| `docs.yml` | push auf `main` (Pfad `docs/**`) | Doku-Site bauen und deployen |
+| `build.yml` | push, pull_request | build the framework, T1+T2, build and validate the example mod |
+| `integration.yml` | push to `main`, a pull request labelled `integration`, nightly | T4 + T5 across the matrix |
+| `conformance.yml` | nightly, manual, release | T3 across the loader matrix |
+| `release.yml` | tag `v*` | the full pipeline + Maven, Modrinth, CurseForge and GitHub releases |
+| `docs.yml` | push to `main` (path `docs/**`) | build and deploy the documentation site |
 
-## 33.2 `build.yml` (vollständig)
+## 33.2 `build.yml` (complete)
 
 ```yaml
 name: build
@@ -751,7 +746,7 @@ jobs:
             example/build/reports/omni/**
 ```
 
-## 33.3 `integration.yml` (vollständig)
+## 33.3 `integration.yml` (complete)
 
 ```yaml
 name: integration
@@ -1002,20 +997,20 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-## 33.6 Laufzeitbudget
+## 33.6 Runtime budget
 
-| Job | Dauer (Referenz, ubuntu-24.04) |
+| Job | Duration (reference, ubuntu-24.04) |
 |---|---|
 | `framework` | 4–6 min |
-| `example` | 5–8 min (Loom-Cache warm: 2–3 min) |
-| `server` (je Matrixeintrag, 6 parallel) | 5–9 min |
-| `client-smoke` (2 parallel) | 12–20 min |
-| `loader-matrix` (5 parallel) | 3–4 min |
-| Release insgesamt | 25–35 min |
+| `example` | 5–8 min (with a warm Loom cache: 2–3 min) |
+| `server` (per matrix entry, 6 in parallel) | 5–9 min |
+| `client-smoke` (2 in parallel) | 12–20 min |
+| `loader-matrix` (5 in parallel) | 3–4 min |
+| release in total | 25–35 min |
 
-Der Loom-Cache (`~/.gradle/caches/fabric-loom`, dekompilierte Minecraft-Quellen) wird über
-`gradle/actions/setup-gradle` mit gecacht; ohne Cache verlängert sich `example` um ~6 min pro MC-Version.
+The Loom cache (`~/.gradle/caches/fabric-loom`, decompiled Minecraft sources) is cached along with
+`gradle/actions/setup-gradle`; without the cache, `example` grows by roughly 6 minutes per MC version.
 
 ---
 
-Weiter mit [Kapitel 34–38 — Distribution, Beispielmod, Migration, neue Versionen, Dokumentation](part-09-project.md).
+Continue with [chapters 34–38 — distribution, example mod, migration, new versions, documentation](part-09-project.md).

@@ -1,53 +1,52 @@
 # 16. Mixin Architecture
 
-## 16.1 Das Prinzip
+## 16.1 The principle
 
-> **Mixins werden nicht „gefiltert“, sie werden „nicht ausgeliefert“.**
-> Ein Mixin-Set gehört zu genau einem Payload. Wird das Payload nicht geladen, existiert seine Mixin-Config nicht
-> im Registrierungsvorgang, und seine Mixin-Klassen liegen nicht auf dem Classpath.
+> **Mixins are not “filtered”, they are “not shipped”.**
+> A mixin set belongs to exactly one payload. If the payload is not loaded, its mixin config does not exist as far
+> as registration is concerned, and its mixin classes are not on the classpath.
 
-Das löst die schwierigste Anforderung des Auftrags („Eine 1.20.1-Mixin-Klasse darf unter 1.21.4 nicht
-versehentlich geladen oder validiert werden“) nicht durch Filterlogik, sondern durch Nichtexistenz — die einzige
-Form von Isolation, die gegen Sponge Mixins eager arbeitende `ClassInfo`-Auflösung immun ist (Kapitel 5.3.2).
+This meets the hardest requirement of the brief (“a 1.20.1 mixin class must not be accidentally loaded or validated
+under 1.21.4”) not through filtering logic but through non-existence — the only form of isolation that is immune to
+Sponge Mixin's eager `ClassInfo` resolution (chapter 5.3.2).
 
-## 16.2 Verzeichnis- und Namenskonvention
+## 16.2 Directory and naming convention
 
 ```
 versions/mc-1.21.4/src/main/
 ├── java/com/example/mc1214/
 │   ├── Platform1214.java
 │   ├── Platform1214Factory.java
-│   ├── mixin/                                  ← common-side Mixins
+│   ├── mixin/                                  ← common-side mixins
 │   │   ├── MinecraftServerMixin.java
 │   │   └── ItemStackMixin.java
-│   └── client/mixin/                           ← client-only Mixins
+│   └── client/mixin/                           ← client-only mixins
 │       ├── TitleScreenMixin.java
 │       └── ItemRendererMixin.java
 └── resources/
-    ├── examplemod-mc1214.mixins.json           ← generiert? NEIN: handgeschrieben (s. 16.3)
+    ├── examplemod-mc1214.mixins.json           ← generated? NO: hand-written (see 16.3)
     ├── examplemod-mc1214.client.mixins.json
     └── examplemod-mc1214.accesswidener
 ```
 
-| Element | Konvention | Erzwungen durch |
+| Element | Convention | Enforced by |
 |---|---|---|
-| Mixin-Package | `<basePackage>.<payloadId>.mixin` bzw. `….<payloadId>.client.mixin` | Validator `OMNI-1034` |
-| Config-Dateiname | `<modId>-<payloadId>.mixins.json`, `<modId>-<payloadId>.client.mixins.json`, `<modId>-<payloadId>.server.mixins.json` | Plugin-Default + Validator `OMNI-1030` |
-| Refmap-Name | `<modId>-<payloadId>-refmap.json` | Loom-Property, vom Plugin gesetzt |
-| Access-Widener-Name | `<modId>-<payloadId>.accesswidener` | Plugin-Default |
+| Mixin package | `<basePackage>.<payloadId>.mixin` resp. `….<payloadId>.client.mixin` | validator `OMNI-1034` |
+| Config file name | `<modId>-<payloadId>.mixins.json`, `<modId>-<payloadId>.client.mixins.json`, `<modId>-<payloadId>.server.mixins.json` | plugin default + validator `OMNI-1030` |
+| Refmap name | `<modId>-<payloadId>-refmap.json` | Loom property, set by the plugin |
+| Access widener name | `<modId>-<payloadId>.accesswidener` | plugin default |
 
-Die Namensschemata enthalten immer die `payloadId`. Damit sind Config-, Refmap- und AW-Namen über die gesamte
-Universal-JAR eindeutig — nicht weil es technisch nötig wäre (es lädt nie mehr als ein Payload), sondern damit
-Stacktraces, Slim-Jars, Crash-Reports und manuelles Debugging eindeutig sind.
+The naming schemes always contain the `payloadId`. Config, refmap and AW names are therefore unique across the
+entire universal JAR — not because it is technically required (never more than one payload loads), but so that
+stack traces, slim JARs, crash reports and manual debugging stay unambiguous.
 
-## 16.3 Mixin-Configs: handgeschrieben, aber validiert
+## 16.3 Mixin configs: hand-written, but validated
 
-Mixin-Configs werden **nicht** generiert. Begründung: Sie enthalten fachliche Entscheidungen
-(`compatibilityLevel`, `mixins`-Auswahl, `injectors.defaultRequire`, Plugin-Klasse), die der Entwickler bewusst
-treffen muss; ein Generator würde entweder alles über Konventionen erraten (fragil) oder eine zweite DSL
-erfordern (redundant). Stattdessen prüft der Validator sie streng, und der `omniPayload`-Task trägt sie
-automatisch in die generierte `fabric.mod.json` und in das Manifest ein — der Entwickler pflegt sie also an genau
-einer Stelle.
+Mixin configs are **not** generated. Rationale: they contain substantive decisions (`compatibilityLevel`, the
+`mixins` selection, `injectors.defaultRequire`, the plugin class) that the developer must make deliberately; a
+generator would either guess everything by convention (fragile) or require a second DSL (redundant). Instead the
+validator checks them strictly, and the `omniPayload` task automatically enters them into the generated
+`fabric.mod.json` and into the manifest — so the developer maintains them in exactly one place.
 
 `versions/mc-1.21.4/src/main/resources/examplemod-mc1214.mixins.json`:
 
@@ -83,42 +82,42 @@ einer Stelle.
 }
 ```
 
-`versions/mc-26.1/src/main/resources/examplemod-mc261.mixins.json` unterscheidet sich nur in
-`compatibilityLevel: "JAVA_25"` und dem Package — ein weiterer Grund, Configs pro Payload zu halten: Der
-Kompatibilitätslevel ist versionsgebunden und darf nicht höher sein als die Ziel-JVM.
+`versions/mc-26.1/src/main/resources/examplemod-mc261.mixins.json` differs only in
+`compatibilityLevel: "JAVA_25"` and the package — another reason to keep configs per payload: the compatibility
+level is version-bound and must not exceed the target JVM.
 
-**Validator-Regeln für Mixin-Configs:**
+**Validator rules for mixin configs:**
 
-| Code | Prüfung |
+| Code | Check |
 |---|---|
-| `OMNI-1100` | `package` beginnt mit dem für dieses Payload deklarierten Präfix. |
-| `OMNI-1101` | Jede in `mixins`/`client`/`server` genannte Klasse existiert im Payload unter `package`. |
-| `OMNI-1102` | Jede Mixin-Klasse im Payload ist in genau einer Config genannt (fängt „vergessene“ Mixins, die stumm nichts tun). |
-| `OMNI-1103` | `refmap` existiert im Payload, ist valides JSON und enthält nur Klassen dieses Payloads. |
-| `OMNI-1104` | `compatibilityLevel` ≤ `JAVA_<payload.requires.java-Minimum>`. |
-| `OMNI-1105` | Client-Mixin-Klassen (Package `*.client.mixin`) sind ausschließlich in einer Config mit `environment: "client"` registriert. |
-| `OMNI-1106` | Keine Mixin-Klasse referenziert `net/minecraft/client/**`, wenn sie in einer nicht-client Config steht. |
-| `OMNI-1107` | `required: true` ist gesetzt (sonst verschluckt Mixin Fehler stillschweigend). |
-| `OMNI-1108` | Kein Container-Eintrag deklariert Mixins (`OMNI-1024`-Gegenstück: Container = mixinfrei). |
+| `OMNI-1100` | `package` starts with the prefix declared for this payload. |
+| `OMNI-1101` | Every class named in `mixins`/`client`/`server` exists in the payload under `package`. |
+| `OMNI-1102` | Every mixin class in the payload is named in exactly one config (catches “forgotten” mixins that silently do nothing). |
+| `OMNI-1103` | The `refmap` exists in the payload, is valid JSON and contains only classes of this payload. |
+| `OMNI-1104` | `compatibilityLevel` ≤ `JAVA_<payload.requires.java minimum>`. |
+| `OMNI-1105` | Client mixin classes (package `*.client.mixin`) are registered exclusively in a config with `environment: "client"`. |
+| `OMNI-1106` | No mixin class references `net/minecraft/client/**` while sitting in a non-client config. |
+| `OMNI-1107` | `required: true` is set (otherwise Mixin swallows errors silently). |
+| `OMNI-1108` | No container entry declares mixins (the counterpart to `OMNI-1024`: the container is mixin-free). |
 
-## 16.4 Environment-Zuordnung in `fabric.mod.json`
+## 16.4 Environment assignment in `fabric.mod.json`
 
-Der `omniPayload`-Task ordnet Configs automatisch zu, anhand des Dateinamens:
+The `omniPayload` task assigns configs automatically, based on the file name:
 
-| Dateiname endet auf | Erzeugter Eintrag |
+| File name ends with | Generated entry |
 |---|---|
 | `.client.mixins.json` | `{ "config": "…", "environment": "client" }` |
 | `.server.mixins.json` | `{ "config": "…", "environment": "server" }` |
-| `.mixins.json` | `"…"` (also `environment: "*"`) |
+| `.mixins.json` | `"…"` (i.e. `environment: "*"`) |
 
-Der `environment`-Filter in `fabric.mod.json` ist der **wirksamere** der beiden möglichen Mechanismen: Er
-verhindert die Registrierung der Config auf einem dedizierten Server komplett, sodass Mixin die Klassen nie
-liest. Die configinterne `"client": [...]`-Liste wird zusätzlich verwendet (Doppelsicherung), ist aber allein
-nicht ausreichend, weil Mixin die Klassen der Config trotzdem parst.
+The `environment` filter in `fabric.mod.json` is the **more effective** of the two available mechanisms: it
+prevents the config from being registered at all on a dedicated server, so Mixin never reads the classes. The
+config-internal `"client": [...]` list is used additionally (belt and braces) but is not sufficient on its own,
+because Mixin parses the config's classes regardless.
 
-## 16.5 Versionsspezifische Mixins — konkretes Beispiel
+## 16.5 Version-specific mixins — a concrete example
 
-Die Signaturdivergenz von `ItemRenderer#renderItem` zwischen 1.20.1 und 1.21.4 ist ein realer Fall.
+The signature divergence of `ItemRenderer#renderItem` between 1.20.1 and 1.21.4 is a real case.
 
 `versions/mc-1.20.1/src/main/java/com/example/mc1201/client/mixin/ItemRendererMixin.java`:
 
@@ -168,7 +167,7 @@ package com.example.mc1214.client.mixin;
 
 import com.example.common.hook.ItemRenderHooks;
 import net.minecraft.client.render.item.ItemRenderer;
-import net.minecraft.item.ItemDisplayContext;      // in 1.21.4 anderer Typ als 1.20.1
+import net.minecraft.item.ItemDisplayContext;      // a different type in 1.21.4 than in 1.20.1
 import net.minecraft.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -186,8 +185,8 @@ public abstract class ItemRendererMixin {
 }
 ```
 
-Beide rufen **denselben** Common-Hook `ItemRenderHooks.beforeRender(ItemRenderContext)` auf. `ItemRenderContext`
-ist ein Common-Interface ohne Minecraft-Typen:
+Both call the **same** common hook `ItemRenderHooks.beforeRender(ItemRenderContext)`. `ItemRenderContext` is a
+common interface without Minecraft types:
 
 ```java
 package com.example.common.hook;
@@ -200,19 +199,19 @@ public interface ItemRenderContext {
 }
 ```
 
-Das ist das Muster für **jeden** versionsspezifischen Mixin: *Der Mixin lebt im Payload, die Fachlogik lebt im
-Common-Code, die Grenze ist ein minecraftfreies Interface.* Damit bleibt der versionsspezifische Anteil auf
-wenige Zeilen Adapterlogik begrenzt.
+This is the pattern for **every** version-specific mixin: *the mixin lives in the payload, the business logic lives
+in the common code, and the boundary is a Minecraft-free interface.* That keeps the version-specific portion down
+to a few lines of adapter logic.
 
-Wäre `ItemRendererMixin` unter 1.21.4 aus dem 1.20.1-Payload geladen worden, wäre das Ergebnis ein harter
-`InvalidInjectionException` beim ersten Rendern — der Fehler, den diese Architektur unmöglich macht: Die
-1.20.1-Klasse existiert unter 1.21.4 nicht auf dem Classpath.
+Had `ItemRendererMixin` from the 1.20.1 payload been loaded under 1.21.4, the result would be a hard
+`InvalidInjectionException` on the first render — the failure this architecture makes impossible: the 1.20.1 class
+does not exist on the classpath under 1.21.4.
 
-## 16.6 Conditional Mixins *innerhalb* eines Payloads
+## 16.6 Conditional mixins *within* a payload
 
-Innerhalb eines Payloads bleibt ein legitimer Bedarf an Bedingungen: Integrations-Mixins, die nur greifen
-sollen, wenn eine optionale Fremdmod geladen ist, oder die per Config abschaltbar sein sollen.
-FabricMultiLoader liefert dafür ein deklaratives Config-Plugin.
+Within a payload there remains a legitimate need for conditions: integration mixins that should apply only when an
+optional foreign mod is loaded, or that should be switchable via config. FabricMultiLoader ships a declarative
+config plugin for that.
 
 `examplemod-mc1214.integration.mixins.json`:
 
@@ -236,7 +235,7 @@ FabricMultiLoader liefert dafür ein deklaratives Config-Plugin.
 }
 ```
 
-Implementierung (vollständig, ohne Auslassungen der relevanten Logik):
+Implementation (complete, with no omissions of the relevant logic):
 
 ```java
 package dev.fabricmultiloader.runtime.mixin;
@@ -259,12 +258,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Deklaratives Mixin-Config-Plugin. Liest den "omni"-Block der eigenen Mixin-Config
- * und entscheidet je Mixin-Klasse, ob sie angewendet wird.
+ * Declarative mixin config plugin. Reads the "omni" block of its own mixin config
+ * and decides per mixin class whether it is applied.
  *
- * WICHTIG: Diese Klasse laeuft VOR der preLaunch-Phase (Mixin select()).
- * Sie darf ausschliesslich JDK-, format- und FabricLoader-API benutzen und
- * insbesondere NICHT RuntimeBootstrap anstossen. Validator-Regel OMNI-1035.
+ * IMPORTANT: this class runs BEFORE the preLaunch phase (Mixin select()).
+ * It may use only the JDK, format and FabricLoader APIs and must in particular
+ * NOT trigger RuntimeBootstrap. Validator rule OMNI-1035.
  */
 public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
 
@@ -274,9 +273,9 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public void onLoad(String mixinPackage) {
-        // Der Config-Name ist ueber getRefMapperConfig() nicht verfuegbar; Mixin uebergibt
-        // in onLoad nur das Package. Wir leiten die Config-Datei ueber das Package ab,
-        // indem wir alle Mixin-Configs des Classpath scannen, die dieses Package deklarieren.
+        // The config name is not available via getRefMapperConfig(); Mixin passes only
+        // the package to onLoad. We derive the config file from the package by scanning
+        // all mixin configs on the classpath that declare this package.
         for (String candidate : ConfigLocator.configsForPackage(mixinPackage)) {
             configName = candidate;
             parse(candidate);
@@ -296,7 +295,7 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
                 conditions.put(simpleName, Condition.parse(cond.getObject(simpleName)));
             }
         } catch (Exception e) {
-            // Ein defektes Plugin darf den Start nicht sprengen: fail-open mit Warnung.
+            // A broken plugin must not break startup: fail open with a warning.
             PluginLog.warn("OMNI-2200 could not read conditional mixin config '" + resource
                     + "': " + e + " — all mixins in this config will be applied.");
         }
@@ -319,7 +318,7 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
     @Override public void preApply (String t, ClassNode n, String m, IMixinInfo i) { }
     @Override public void postApply(String t, ClassNode n, String m, IMixinInfo i) { }
 
-    /** requireMod + optionale Version, requireProperty, requireEnv. */
+    /** requireMod + optional version, requireProperty, requireEnv. */
     static final class Condition {
         String requireMod; VersionRange version; String requireProperty; String requireEnv;
 
@@ -345,88 +344,87 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
 }
 ```
 
-**Grenzen, die dokumentiert werden müssen** (`docs/mixins.md`):
+**Limits that must be documented** (`docs/mixins.md`):
 
-* `shouldApplyMixin` verhindert die *Anwendung*, nicht das *Laden und Validieren* der Mixin-Klasse. Eine
-  Integrations-Mixin-Klasse darf daher **nur** Typen referenzieren, die in dieser MC-Version existieren; für
-  Fremdmod-Typen bedeutet das: Der Mixin darf `cloth-config`-Klassen im Rumpf verwenden (lazy aufgelöst), aber
-  **nicht** in `@Mixin(Target.class)` — dort ist ein `targets = "…"`-String mit voll qualifiziertem Namen nötig,
-  weil sonst die Zielklasse eager aufgelöst wird und ohne die Fremdmod fehlt.
-* Deshalb gilt für optionale Fremdmod-Integrationen zusätzlich: Mixin-Config nur registrieren, wenn die Mod
-  vorhanden ist, geht **nicht** deklarativ (die `fabric.mod.json` ist statisch). Der robuste Weg für harte
-  Fremdmod-Abhängigkeiten ist ein **eigenes Payload** mit `requires.mods` — oder Verzicht auf Mixin und
-  Verwendung der offiziellen API der Fremdmod.
+* `shouldApplyMixin` prevents *application*, not the *loading and validation* of the mixin class. An integration
+  mixin class may therefore reference only types that exist in this MC version; for foreign-mod types that means
+  the mixin may use `cloth-config` classes in its body (resolved lazily) but **not** in `@Mixin(Target.class)` —
+  there a `targets = "…"` string with the fully qualified name is required, because otherwise the target class is
+  resolved eagerly and is missing without the foreign mod.
+* Consequently, for optional foreign-mod integrations there is an additional constraint: registering a mixin config
+  only when the mod is present is **not** possible declaratively (the `fabric.mod.json` is static). The robust
+  route for hard foreign-mod dependencies is a **dedicated payload** with `requires.mods` — or dropping mixins and
+  using the foreign mod's official API.
 
-## 16.7 Fehlerbehandlung bei Mixin-Problemen
+## 16.7 Error handling for mixin problems
 
-| Situation | Wer meldet | Verbesserung durch FabricMultiLoader |
+| Situation | Who reports | Improvement by FabricMultiLoader |
 |---|---|---|
-| Mixin-Target existiert nicht (falsches Payload für diese MC-Version — durch Fehlkonfiguration der Matrix) | Mixin `InvalidInjectionException` beim Class-Load | Die Runtime installiert in `PayloadPreLaunch` einen `Thread.UncaughtExceptionHandler`-unabhängigen **Crash-Report-Anhang** über den Payload-Adapter (`Platform#installCrashContext`), der in jedem Crash-Report den Block „FabricMultiLoader: examplemod 2.0.0, payload mc1214, mc 1.21.4, java 21“ ergänzt. Damit ist im Bugreport sofort sichtbar, welches Payload aktiv war. |
-| Mixin-Config im Payload, aber nicht in `fabric.mod.json` | niemand (Mixin greift stumm nicht) | Validator `OMNI-1109`: Jede `*.mixins.json` im Payload muss in der `fabric.mod.json` registriert sein. |
-| Mixin-Config in `fabric.mod.json`, Datei fehlt | Loader: harter Startfehler | Validator `OMNI-1110` fängt es zur Build-Zeit. |
-| Zwei Payloads mit identischem Config-Namen | niemand (nur eines lädt) | Validator `OMNI-1030` erzwingt Eindeutigkeit. |
-| `compatibilityLevel` höher als JVM | Mixin `IllegalArgumentException` beim Start | Validator `OMNI-1104`. |
+| A mixin target does not exist (the wrong payload for this MC version, due to a matrix misconfiguration) | Mixin `InvalidInjectionException` at class load | In `PayloadPreLaunch` the runtime installs a **crash report attachment** via the payload adapter (`Platform#installCrashContext`), independent of any `Thread.UncaughtExceptionHandler`, adding the block “FabricMultiLoader: examplemod 2.0.0, payload mc1214, mc 1.21.4, java 21” to every crash report. The bug report then immediately shows which payload was active. |
+| Mixin config in the payload but not in `fabric.mod.json` | nobody (the mixin silently does nothing) | Validator `OMNI-1109`: every `*.mixins.json` in the payload must be registered in the `fabric.mod.json`. |
+| Mixin config in `fabric.mod.json`, file missing | loader: hard startup failure | Validator `OMNI-1110` catches it at build time. |
+| Two payloads with identical config names | nobody (only one loads) | Validator `OMNI-1030` enforces uniqueness. |
+| `compatibilityLevel` higher than the JVM | Mixin `IllegalArgumentException` at startup | Validator `OMNI-1104`. |
 
-## 16.8 Warum es keinen „Mixin-Dispatcher“ gibt
+## 16.8 Why there is no “mixin dispatcher”
 
-Ein zentraler „Mixin Dispatcher“, der zur Laufzeit entscheidet, welche Mixin-Sets aktiv sind, war in der
-ursprünglichen Projektidee vorgesehen. Er ist in dieser Architektur **nicht vorhanden und nicht nötig** — und
-das ist eine Verbesserung, nicht ein Weglassen:
+A central “mixin dispatcher” deciding at runtime which mixin sets are active was part of the original project idea.
+In this architecture it is **absent and unnecessary** — and that is an improvement, not an omission:
 
-* Ein Dispatcher könnte Mixins erst nach `MixinBootstrap` registrieren (Phase 2.4 ist vorbei, wenn Modcode
-  läuft). Nachträgliche `Mixins.addConfiguration`-Aufrufe sind nicht spezifiziert und in Fabric nicht
-  unterstützt.
-* Ein Dispatcher könnte die eagere `ClassInfo`-Auflösung nicht verhindern.
-* Der Loader macht die Auswahl bereits — deterministisch, vor jeder Klassenberührung, mit vollständiger
-  Fehlerdiagnose.
+* A dispatcher could only register mixins after `MixinBootstrap` (phase 2.4 is over by the time mod code runs).
+  Retroactive `Mixins.addConfiguration` calls are unspecified and unsupported in Fabric.
+* A dispatcher could not prevent the eager `ClassInfo` resolution.
+* The loader already makes the selection — deterministically, before any class is touched, with full error
+  diagnostics.
 
-Die Rolle, die der Dispatcher übernehmen sollte (Sicherstellen, dass nur die richtigen Mixins greifen),
-übernimmt damit vollständig die Payload-Auswahl des Loaders plus die Build-Zeit-Validierung.
+The role the dispatcher was meant to fill (ensuring only the right mixins apply) is therefore fully taken over by
+the loader's payload selection plus build-time validation.
 
 ---
 
 # 17. Access Widener Architecture
 
-## 17.1 Ausgangsproblem
+## 17.1 The starting problem
 
-Fabric Loader akzeptiert genau **einen** `accessWidener`-Pfad pro Mod, die Datei ist mappingabhängig
-(Namespace-Header wird geprüft), und Mitglieder-Namen können zwischen MC-Versionen differieren. Eine einzige
-versionsübergreifende AW-Datei ist damit nicht mappingkorrekt herstellbar (Kapitel 5.4.2).
+Fabric Loader accepts exactly **one** `accessWidener` path per mod, the file is mapping-dependent (the namespace
+header is checked), and member names can differ between MC versions. A single cross-version AW file is therefore
+not producible in a mapping-correct way (chapter 5.4.2).
 
-## 17.2 Lösung
+## 17.2 Solution
 
-**Ein Access Widener pro Payload.** Da ein Payload eine eigene Fabric-Mod ist, gilt die „eine Datei pro
-Mod“-Regel pro Payload — nicht pro Universal-JAR. Der Loader merged die AW-Dateien aller *geladenen* Mods; da nur
-ein Payload geladen ist, ist genau ein mod-eigener AW aktiv.
+**One access widener per payload.** Since a payload is its own Fabric mod, the “one file per mod” rule applies per
+payload — not per universal JAR. The loader merges the AW files of all *loaded* mods; since only one payload is
+loaded, exactly one mod-owned AW is active.
 
 ```
-common/src/main/accesswidener/shared.accesswidener            (Namespace named, versionsneutral gemeint)
-versions/mc-1.20.1/src/main/resources/examplemod-mc1201.accesswidener   (Namespace named, versionsspezifisch)
+common/src/main/accesswidener/shared.accesswidener            (namespace named, meant to be version-neutral)
+versions/mc-1.20.1/src/main/resources/examplemod-mc1201.accesswidener   (namespace named, version-specific)
 versions/mc-1.21.4/src/main/resources/examplemod-mc1214.accesswidener
 versions/mc-26.1/src/main/resources/examplemod-mc261.accesswidener
         │
-        │  mergeAccessWidener<Payload>   (Build-Zeit, VOR Loom-Remap, im Namespace named)
+        │  mergeAccessWidener<Payload>   (build time, BEFORE the Loom remap, in the named namespace)
         ▼
 versions/mc-X/build/omni/accesswidener/examplemod-mcX.accesswidener
         │  Loom remapJar  (named → intermediary)
         ▼
-Payload:  examplemod-mcX.accesswidener   (Namespace intermediary)
+payload:  examplemod-mcX.accesswidener   (namespace intermediary)
 ```
 
-## 17.3 Merge-Semantik
+## 17.3 Merge semantics
 
-`MergeAccessWidenerTask` (Gradle, deklarierte In-/Outputs, cachebar):
+`MergeAccessWidenerTask` (Gradle, declared inputs/outputs, cacheable):
 
-1. Liest die gemeinsame Datei `common/src/main/accesswidener/shared.accesswidener`, falls vorhanden.
-2. Liest die payload-spezifische Datei, falls vorhanden.
-3. Prüft: Beide müssen `accessWidener v2 named` als Header haben (`OMNI-1120`, sonst Fehler mit Zeilenangabe).
-4. Schreibt einen Header `accessWidener v2 named` und danach die Vereinigung der Einträge:
-   * Zeilenweise Normalisierung: Kommentare (`#`) entfernt, Whitespace kollabiert, leere Zeilen entfernt.
-   * Deduplizierung über den normalisierten Text.
-   * Sortierung: nach `(typ, klasse, member)` lexikographisch — für Reproduzierbarkeit.
-   * Bei widersprüchlichen Einträgen für dasselbe Ziel (`accessible` vs. `extendable` vs. `mutable`) werden
-     **alle** behalten (AW ist additiv, kein Konflikt).
-5. Voranstellen eines generierten Kommentarblocks mit Quelle jeder Zeile — für Debugging:
+1. Reads the shared file `common/src/main/accesswidener/shared.accesswidener`, if present.
+2. Reads the payload-specific file, if present.
+3. Checks: both must have `accessWidener v2 named` as their header (`OMNI-1120`, otherwise an error with a line
+   reference).
+4. Writes a header `accessWidener v2 named` followed by the union of the entries:
+   * Line-wise normalisation: comments (`#`) removed, whitespace collapsed, blank lines removed.
+   * Deduplication over the normalised text.
+   * Sorting by `(type, class, member)` lexicographically — for reproducibility.
+   * Where entries for the same target conflict (`accessible` vs. `extendable` vs. `mutable`), **all** are kept
+     (AW is additive; there is no conflict).
+5. Prepends a generated comment block naming the source of each line — for debugging:
 
 ```
 accessWidener v2 named
@@ -439,47 +437,46 @@ extendable	class	net/minecraft/block/AbstractBlock
 mutable	field	net/minecraft/entity/LivingEntity	activeItemStack	Lnet/minecraft/item/ItemStack;
 ```
 
-`shared.accesswidener` ist **kein** Versprechen, dass die Einträge in allen Versionen existieren — sie ist eine
-Bequemlichkeit für den häufigen Fall. Existiert ein Eintrag in einer Version nicht, ist er dort wirkungslos
-(Kapitel 5.4.1); der Validator warnt (`OMNI-1121`), wenn ein Eintrag in einem Payload keine passende Klasse in
-dessen Intermediary-Mappings findet — dazu liest er die von Loom bereitgestellte Tiny-Mappings-Datei des
-jeweiligen Version-Moduls. Diese Prüfung ist eine **Warnung**, keine Fehlermeldung, weil AW-Einträge legitim auf
-optionale Ziele zeigen können.
+`shared.accesswidener` is **not** a promise that its entries exist in every version — it is a convenience for the
+common case. If an entry does not exist in a version it has no effect (chapter 5.4.1); the validator warns
+(`OMNI-1121`) when an entry in a payload has no matching class in that payload's intermediary mappings, for which
+it reads the tiny mappings file Loom provides for the version module. That check is a **warning**, not an error,
+because AW entries may legitimately point at optional targets.
 
-## 17.4 Access Widener für Fremdmod-Klassen
+## 17.4 Access wideners for foreign-mod classes
 
-Access Widener können nur auf Klassen wirken, die durch den Knot-Transformer laufen — das sind Minecraft **und
-alle Mods**. Ein AW-Eintrag auf eine Fremdmod-Klasse ist also technisch möglich, aber:
+Access wideners can affect only classes that pass through the Knot transformer — which means Minecraft **and all
+mods**. An AW entry for a foreign-mod class is therefore technically possible, but:
 
-* Der Namespace-Header ist `named`/`intermediary` und bezieht sich auf Minecraft-Mappings; Fremdmod-Klassen sind
-  nicht gemappt und müssen mit ihrem echten FQCN eingetragen werden. Loom remappt sie nicht (kein Mapping-Eintrag
-  ⇒ unverändert durchgereicht), das funktioniert also.
-* Der Validator warnt (`OMNI-1122`), weil es eine fragile Kopplung an Fremdmod-Interna ist, und verlangt eine
-  explizite Freigabe: `omni { allowForeignAccessWidener("cloth-config") }` in der DSL des Version-Moduls.
+* The namespace header is `named`/`intermediary` and refers to Minecraft mappings; foreign-mod classes are not
+  mapped and must be entered with their real FQCN. Loom does not remap them (no mapping entry ⇒ passed through
+  unchanged), so it works.
+* The validator warns (`OMNI-1122`), because it is a fragile coupling to foreign-mod internals, and it requires an
+  explicit opt-in: `omni { allowForeignAccessWidener("cloth-config") }` in the version module's DSL.
 
-## 17.5 Warum kein eigener Transformer, keine Reflection, kein Build-Time-Bytecode-Patch
+## 17.5 Why no custom transformer, no reflection, no build-time bytecode patch
 
-Alternativen, die geprüft und verworfen wurden:
+Alternatives examined and rejected:
 
-| Alternative | Verworfen weil |
+| Alternative | Rejected because |
 |---|---|
-| Eigener `AccessWidener` zur Laufzeit nachladen | Der `AccessWidenerClassTransformer` wird in Phase 2.3g gebaut; keine öffentliche API zum Nachreichen. Reflection auf `FabricLoaderImpl#getAccessWidener` verstößt gegen G3. |
-| Reflection statt Access Widening im Modcode | Funktioniert für Feldzugriff und Methodenaufruf, aber nicht für `extendable` (Vererbung von final-Klassen) und nicht performant in Hot Paths. Zudem bricht `setAccessible` auf JDK 17+ bei JPMS-geschützten Paketen — nicht bei Minecraft (unnamed module), aber die Fehlerklasse ist unangenehm. Als *Ergänzung* für Einzelfälle dokumentiert, nicht als Ersatz. |
-| Build-Time-Bytecode-Patch (Klassen im Payload public machen) | Ändert Minecraft-Bytecode, der nicht Teil unseres Artefakts ist — unmöglich, weil Minecraft nicht mitgeliefert wird. |
-| Mixin `@Accessor`/`@Invoker` statt AW | Legitime, oft **bessere** Alternative: versionsspezifisch (liegt im Payload), refmap-gestützt, ohne globale Sichtbarkeitsänderung. Die Dokumentation empfiehlt `@Accessor`/`@Invoker` als Standard und AW nur für `extendable`/`mutable` und für Zugriff aus vielen Klassen. |
+| Load an additional `AccessWidener` at runtime | The `AccessWidenerClassTransformer` is built in phase 2.3g; there is no public API to add to it. Reflection on `FabricLoaderImpl#getAccessWidener` violates G3. |
+| Reflection instead of access widening in the mod code | Works for field access and method invocation, but not for `extendable` (inheriting from final classes) and is not performant in hot paths. Additionally `setAccessible` breaks on JDK 17+ for JPMS-protected packages — not for Minecraft (unnamed module), but the failure class is unpleasant. Documented as a *supplement* for individual cases, not as a replacement. |
+| Build-time bytecode patch (making classes public in the payload) | Would modify Minecraft bytecode, which is not part of our artifact — impossible, since Minecraft is not shipped. |
+| Mixin `@Accessor`/`@Invoker` instead of AW | A legitimate and often **better** alternative: version-specific (it lives in the payload), refmap-backed, without a global visibility change. The documentation recommends `@Accessor`/`@Invoker` as the default and AW only for `extendable`/`mutable` and for access from many classes. |
 
-## 17.6 Validator-Regeln (Zusammenfassung)
+## 17.6 Validator rules (summary)
 
-| Code | Regel | Schwere |
+| Code | Rule | Severity |
 |---|---|---|
-| `OMNI-1024` | Container deklariert **keinen** `accessWidener` | Fehler |
-| `OMNI-1082` | AW-Namespace im fertigen Payload == `payload.mappings.namespace` (`intermediary`) | Fehler |
-| `OMNI-1120` | Quelldateien haben Header `accessWidener v2 named` | Fehler |
-| `OMNI-1121` | Jeder AW-Eintrag hat ein auflösbares Ziel in den Mappings des Payloads | Warnung |
-| `OMNI-1122` | AW-Einträge auf Nicht-Minecraft-Klassen sind explizit freigegeben | Warnung/Fehler bei fehlender Freigabe |
-| `OMNI-1123` | `payload.accessWidener` im Manifest == `accessWidener` in der Payload-`fabric.mod.json` == existierende Datei | Fehler |
-| `OMNI-1124` | AW-Datei ist deterministisch sortiert (erkennt Handbearbeitung des generierten Artefakts) | Warnung |
+| `OMNI-1024` | The container declares **no** `accessWidener` | error |
+| `OMNI-1082` | The AW namespace in the finished payload == `payload.mappings.namespace` (`intermediary`) | error |
+| `OMNI-1120` | Source files have the header `accessWidener v2 named` | error |
+| `OMNI-1121` | Every AW entry has a resolvable target in the payload's mappings | warning |
+| `OMNI-1122` | AW entries for non-Minecraft classes are explicitly opted in | warning/error when the opt-in is missing |
+| `OMNI-1123` | `payload.accessWidener` in the manifest == `accessWidener` in the payload `fabric.mod.json` == an existing file | error |
+| `OMNI-1124` | The AW file is deterministically sorted (detects hand-editing of the generated artifact) | warning |
 
 ---
 
-Weiter mit [Kapitel 18–19, 26–28 — Common API, Version-Adapter-API, Client/Server, Networking, Registries](part-06-api.md).
+Continue with [chapters 18–19, 26–28 — common API, version adapter API, client/server, networking, registries](part-06-api.md).

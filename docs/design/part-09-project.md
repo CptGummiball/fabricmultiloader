@@ -1,28 +1,28 @@
 # 34. Distribution
 
-## 34.1 Grundsatz
+## 34.1 Principle
 
-Für Spieler existiert **eine** Datei. Auf Modrinth und CurseForge wird sie als **ein** File-Upload mit **mehreren**
-Game-Version-Tags veröffentlicht. Beide Plattformen unterstützen das nativ (mehrere `game_versions` pro File);
-kein Trick, keine Sonderbehandlung.
+For players there is **one** file. On Modrinth and CurseForge it is published as **one** file upload with
+**multiple** game version tags. Both platforms support that natively (several `game_versions` per file); no trick,
+no special handling.
 
-## 34.2 Dateinamen
+## 34.2 File names
 
-| Artefakt | Name | Zweck |
+| Artifact | Name | Purpose |
 |---|---|---|
-| Universal-JAR | `examplemod-2.0.0-universal.jar` | der Download für Spieler |
-| Checksumme | `examplemod-2.0.0-universal.jar.sha256` | Verifikation, Modpack-Tools |
-| Slim-JAR (optional) | `examplemod-2.0.0+mc1.21.4.jar` | Einzelversion, falls jemand sie braucht |
-| API-Artefakt | `examplemod-api-2.0.0.jar` | Maven, für Drittmods |
-| Sources (optional) | `examplemod-2.0.0-sources.jar` | pro Version-Modul, nur Maven |
+| Universal JAR | `examplemod-2.0.0-universal.jar` | the download for players |
+| Checksum | `examplemod-2.0.0-universal.jar.sha256` | verification, modpack tools |
+| Slim JAR (optional) | `examplemod-2.0.0+mc1.21.4.jar` | a single version, should anybody need it |
+| API artifact | `examplemod-api-2.0.0.jar` | Maven, for third-party mods |
+| Sources (optional) | `examplemod-2.0.0-sources.jar` | per version module, Maven only |
 
-Der Classifier `-universal` ist Default und über `container { archiveClassifier }` änderbar. Bewusst **kein** `+`
-im Hauptdateinamen: Einige Launcher, Mod-Manager und Webserver behandeln `+` in URLs inkonsistent.
+The classifier `-universal` is the default and can be changed via `container { archiveClassifier }`. Deliberately
+**no** `+` in the main file name: some launchers, mod managers and web servers treat `+` in URLs inconsistently.
 
 ## 34.3 Modrinth
 
-`publishModrinth` (Implementierung: eigener Publisher im Plugin, HTTP-API v2, keine Fremdplugin-Abhängigkeit;
-`minotaur` kann alternativ genutzt werden):
+`publishModrinth` (implementation: a dedicated publisher in the plugin, HTTP API v2, no third-party plugin
+dependency; `minotaur` can be used as an alternative):
 
 ```
 POST /v2/version
@@ -38,33 +38,32 @@ POST /v2/version
     { "project_id": "P7dR8mSH", "dependency_type": "required" },        // Fabric API
     { "project_id": "9s6osm5g", "dependency_type": "optional" }         // Cloth Config
   ],
-  "changelog":      "<Inhalt von CHANGELOG.md, Abschnitt 2.0.0>",
+  "changelog":      "<content of CHANGELOG.md, section 2.0.0>",
   "file_parts":     ["file"],
   "primary_file":   "file"
 }
 ```
 
-**Ableitung von `game_versions` aus der Matrix** — der Punkt, an dem Automatisierung wirklich zählt: Aus den
-effektiven MC-Ranges wird die Liste der **konkret existierenden** MC-Versionen berechnet, indem der Bereich gegen
-Modrinths Versionsindex (`GET /v2/tag/game_version`) geschnitten wird. Aus `>=1.21 <1.21.2` werden damit
-automatisch `1.21` und `1.21.1`, aus `>=1.21.4 <1.21.5` wird `1.21.4`. Snapshots werden nur aufgenommen, wenn
-`snapshots = true` in der Matrix steht. Das Ergebnis wird vor dem Upload ausgegeben und ist bei
-`--dry-run` prüfbar.
+**Deriving `game_versions` from the matrix** — the point where automation really pays off: the list of **concretely
+existing** MC versions is computed from the effective MC ranges by intersecting them with Modrinth's version index
+(`GET /v2/tag/game_version`). `>=1.21 <1.21.2` therefore automatically becomes `1.21` and `1.21.1`,
+`>=1.21.4 <1.21.5` becomes `1.21.4`. Snapshots are included only when `snapshots = true` is set in the matrix. The
+result is printed before upload and can be inspected with `--dry-run`.
 
 ## 34.4 CurseForge
 
-Upload über die Upload-API (`POST /api/projects/<id>/upload-file`) mit `gameVersions` als Liste von
-CurseForge-Version-IDs. Die IDs werden über `GET /api/game/versions` aufgelöst und auf dieselbe Weise aus der
-Matrix abgeleitet. Zusätzlich werden die Tags `Fabric` (modloader) und `Java 17`/`Java 21`/`Java 25`
-(Java-Version-Tags, sofern das Projekt sie nutzt) gesetzt — mit dem Hinweis in der Doku, dass CurseForge nur
-**eine** Java-Angabe pro File erlaubt und deshalb die **niedrigste** gesetzt wird.
+Upload via the upload API (`POST /api/projects/<id>/upload-file`) with `gameVersions` as a list of CurseForge
+version IDs. The IDs are resolved via `GET /api/game/versions` and derived from the matrix the same way.
+Additionally the tags `Fabric` (modloader) and `Java 17`/`Java 21`/`Java 25` (Java version tags, if the project uses
+them) are set — with a note in the documentation that CurseForge permits only **one** Java entry per file and that
+the **lowest** is therefore used.
 
-`relations`: Fabric API als `requiredDependency`, optionale Mods als `optionalDependency`.
+`relations`: Fabric API as `requiredDependency`, optional mods as `optionalDependency`.
 
 ## 34.5 Changelog
 
-`CHANGELOG.md` im Keep-a-Changelog-Format; der Publisher extrahiert den Abschnitt der aktuellen Version und
-ergänzt automatisch einen generierten Block:
+`CHANGELOG.md` in Keep-a-Changelog format; the publisher extracts the section for the current version and
+automatically appends a generated block:
 
 ```markdown
 ### Supported versions
@@ -79,57 +78,56 @@ This is a single universal file — the same download works on every version lis
 SHA-256: 7c9a1f…e2
 ```
 
-Der Block stammt aus `omniReport` und ist damit immer korrekt.
+The block comes from `omniReport` and is therefore always correct.
 
-## 34.6 GitHub Release
+## 34.6 GitHub release
 
-Tag `v2.0.0`, Titel `Universal Example Mod 2.0.0`, Body = Changelog-Abschnitt + Versionstabelle, Assets:
-Universal-JAR, `SHA256SUMS.txt`, `validation.txt`. Die Anhänge des Validierungsberichts sind bewusst öffentlich:
-Sie belegen, dass das Artefakt geprüft ist, und helfen bei Supportanfragen.
+Tag `v2.0.0`, title `Universal Example Mod 2.0.0`, body = the changelog section plus the version table, assets: the
+universal JAR, `SHA256SUMS.txt`, `validation.txt`. Attaching the validation report is deliberate: it evidences that
+the artifact was checked and helps with support requests.
 
-## 34.7 Modpack- und Launcher-Verträglichkeit
+## 34.7 Modpack and launcher compatibility
 
-| Werkzeug | Verhalten | Hinweis |
+| Tool | Behaviour | Note |
 |---|---|---|
-| Prism / MultiMC | Behandelt die JAR als eine Mod; erkennt `fabric.mod.json` und zeigt Name/Version | Die `depends.minecraft`-Union führt dazu, dass Prisms „passt nicht zur Instanz“-Warnung korrekt ausbleibt |
-| Modrinth App | zeigt eine Mod, ein Update | `game_versions` müssen korrekt sein, sonst filtert die App die Datei aus |
-| Packwiz | `.pw.toml` mit einer Datei und Hash | funktioniert unverändert |
-| CurseForge App | eine Datei | s. Java-Tag-Einschränkung in 34.4 |
-| Server-Hoster mit Auto-Update | eine Datei | `.sha256`-Sidecar erlaubt Integritätsprüfung |
-| Modpacks, die JARs rekomprimieren (selten) | Payload-Hashes könnten brechen | `verifyIntegrity` liefert `OMNI-2013` mit dem Hinweis auf `-Dfabricmultiloader.verify=false`; Kapitel 39.4 |
+| Prism / MultiMC | Treats the JAR as one mod; reads `fabric.mod.json` and shows the name/version | The `depends.minecraft` union means Prism's “does not match this instance” warning correctly stays away |
+| Modrinth App | Shows one mod, one update | `game_versions` must be correct, otherwise the app filters the file out |
+| Packwiz | A `.pw.toml` with one file and a hash | works unchanged |
+| CurseForge App | One file | see the Java tag limitation in 34.4 |
+| Server hosts with auto-update | One file | the `.sha256` sidecar allows an integrity check |
+| Modpacks that recompress JARs (rare) | Payload hashes may break | `verifyIntegrity` yields `OMNI-2013` with a pointer to `-Dfabricmultiloader.verify=false`; chapter 39.4 |
 
-## 34.8 Wann Slim-Jars sinnvoll sind
+## 34.8 When slim JARs make sense
 
-`buildSlimJars` erzeugt pro Payload ein eigenständiges Jar (Payload + Common + Container-Metadaten, auf dieses
-Payload reduziert). Anwendungsfälle, für die es dokumentiert ist:
+`buildSlimJars` produces a standalone JAR per payload (payload + common + container metadata, reduced to that
+payload). Documented use cases:
 
-* Größenkritische Verteilung (z. B. serverseitige Auto-Downloads mit Bandbreitenlimit).
-* Plattformen, die keine Mehrfach-Game-Version-Tags erlauben.
-* Rückfallpfad, falls die tragende Loader-Annahme in einer künftigen Loader-Version brechen sollte
-  (Kapitel 41.2) — dann wäre eine Slim-Veröffentlichung ohne Codeänderung möglich.
+* Size-critical distribution (e.g. server-side auto-downloads with bandwidth limits).
+* Platforms that do not allow multiple game version tags.
+* A fallback path should the load-bearing loader assumption break in a future loader version (chapter 41.2) — a slim
+  release would then be possible without a code change.
 
-Standardmäßig deaktiviert, damit das Versprechen „eine Datei“ nicht verwässert wird.
+Disabled by default, so the “one file” promise is not diluted.
 
 ---
 
 # 35. Example Mod — `UniversalExampleMod`
 
-## 35.1 Umfang
+## 35.1 Scope
 
-Unterstützt Minecraft **1.20.1**, **1.21 – 1.21.1**, **1.21.4**. Enthält: gemeinsamen Entrypoint, ein Item mit
-Verhalten, einen Block mit BlockItem, einen Command, Networking in beide Richtungen, einen Common-Event-Handler,
-drei Version-Adapter, je einen versionsspezifischen Mixin, gemeinsame und versionsspezifische Ressourcen,
-Datagen, Unit-Tests.
+Supports Minecraft **1.20.1**, **1.21 – 1.21.1**, **1.21.4**. Contains: a shared entrypoint, an item with behaviour,
+a block with a BlockItem, a command, networking in both directions, a common event handler, three version adapters,
+one version-specific mixin each, shared and version-specific resources, datagen, unit tests.
 
-## 35.2 Vollständige Projektstruktur
+## 35.2 Complete project structure
 
 ```
-example/                                     (im Framework-Repo; im Template Root-Projekt)
+example/                                     (inside the framework repo; the root project in the template)
 ├── settings.gradle.kts
 ├── build.gradle.kts
 ├── gradle.properties
 ├── gradle/
-│   ├── fabricmultiloader.toml               ← Matrix aus Kapitel 20.3
+│   ├── fabricmultiloader.toml               ← the matrix from chapter 20.3
 │   └── libs.versions.toml
 │
 ├── common/
@@ -140,13 +138,13 @@ example/                                     (im Framework-Repo; im Template Roo
 │       │   ├── ExampleModClient.java                 @UniversalEntrypoint(CLIENT)
 │       │   ├── ExampleCommands.java
 │       │   ├── ExampleEvents.java
-│       │   ├── RubyLogic.java                        reine Fachlogik, unit-getestet
+│       │   ├── RubyLogic.java                        pure business logic, unit-tested
 │       │   ├── RubyBehavior.java                     ItemBehavior
-│       │   ├── RubyContent.java                      Rezept-/Loot-Spezifikationen (Datagen + Runtime)
-│       │   ├── api/ExampleModApi.java                öffentliche API für Drittmods
+│       │   ├── RubyContent.java                      recipe/loot specifications (datagen + runtime)
+│       │   ├── api/ExampleModApi.java                the public API for third-party mods
 │       │   ├── api/RubyView.java
-│       │   ├── config/ExampleConfig.java             JSON über format-Parser
-│       │   ├── hook/ItemRenderHooks.java             von Mixins aufgerufen
+│       │   ├── config/ExampleConfig.java             JSON via the format parser
+│       │   ├── hook/ItemRenderHooks.java             called from mixins
 │       │   ├── hook/ItemRenderContext.java
 │       │   ├── net/ExampleNetworking.java
 │       │   ├── net/ChargeRequest.java
@@ -163,7 +161,7 @@ example/                                     (im Framework-Repo; im Template Roo
 │       ├── main/omni/icon.png
 │       └── test/java/com/example/common/
 │           ├── RubyLogicTest.java
-│           ├── ExampleModInitTest.java               nutzt FakeModContext
+│           ├── ExampleModInitTest.java               uses FakeModContext
 │           └── ExampleConfigTest.java
 │
 ├── versions/
@@ -190,40 +188,41 @@ example/                                     (im Framework-Repo; im Template Roo
 │   │       │   ├── examplemod-mc1201.mixins.json
 │   │       │   ├── examplemod-mc1201.client.mixins.json
 │   │       │   ├── examplemod-mc1201.accesswidener
-│   │       │   └── assets/examplemod/models/item/ruby.json     ← Override (1.20.1-Modellformat)
-│   │       └── generated/                                       ← Datagen-Output (eingecheckt)
-│   ├── mc-1.21.1/   (analog, com.example.mc1211)
-│   └── mc-1.21.4/   (analog, com.example.mc1214)
+│   │       │   └── assets/examplemod/models/item/ruby.json     ← override (1.20.1 model format)
+│   │       └── generated/                                       ← datagen output (committed)
+│   ├── mc-1.21.1/   (analogous, com.example.mc1211)
+│   └── mc-1.21.4/   (analogous, com.example.mc1214)
 │
 ├── run/                                     (gitignored)
 └── .github/workflows/build.yml
 ```
 
-## 35.3 Erzeugtes Artefakt
+## 35.3 The produced artifact
 
 ```
 build/libs/universal-example-mod-1.0.0-universal.jar        ~4.8 MiB
-├── fabric.mod.json                          id=examplemod, depends.minecraft = 3 Ranges
-├── META-INF/omni-container.json             3 Payloads, Hashes, Constraints
+├── fabric.mod.json                          id=examplemod, depends.minecraft = 3 ranges
+├── META-INF/omni-container.json             3 payloads, hashes, constraints
 ├── META-INF/MANIFEST.MF                     Omni-Container-Format: omni/1
-├── com/example/common/…                     142 Klassen, Classfile 61
+├── com/example/common/…                     142 classes, class file 61
 ├── omni/icon.png
 ├── omni/entrypoints.json
 ├── LICENSE
 └── META-INF/jars/
     ├── fabricmultiloader-runtime-1.0.0.jar  ~62 KiB
-    ├── examplemod-mc1201.jar                ~1.42 MiB  (Classfile 61)
-    ├── examplemod-mc1211.jar                ~1.51 MiB  (Classfile 65)
-    └── examplemod-mc1214.jar                ~1.54 MiB  (Classfile 65)
+    ├── examplemod-mc1201.jar                ~1.42 MiB  (class file 61)
+    ├── examplemod-mc1211.jar                ~1.51 MiB  (class file 65)
+    └── examplemod-mc1214.jar                ~1.54 MiB  (class file 65)
 ```
 
-## 35.4 Ausgewählte Dateien im Zusammenhang
+## 35.4 Selected files in context
 
-Die zentralen Quelldateien sind in Kapitel 27/28 vollständig gezeigt (`ExampleMod`, `ExampleModClient`,
+The central source files are shown in full in chapters 27/28 (`ExampleMod`, `ExampleModClient`,
 `ExampleNetworking`, `ExampleCommands`, `ExampleEvents`, `Registries1201`, `Registries1214`, `Networking1201`,
-`Networking1214`, `Platform1214`, `ItemRendererMixin` in beiden Varianten). Ergänzend:
+`Networking1214`, `Platform1214`, `ItemRendererMixin` in both variants). In addition:
 
-`common/src/main/java/com/example/common/RubyLogic.java` — reine Fachlogik, ohne jede Abhängigkeit außer der API:
+`common/src/main/java/com/example/common/RubyLogic.java` — pure business logic, with no dependency other than the
+API:
 
 ```java
 package com.example.common;
@@ -299,8 +298,8 @@ class ExampleModInitTest {
 }
 ```
 
-Dieser Test läuft in ~40 ms, braucht kein Minecraft, kein Loom und keinen Gradle-Sync — und deckt trotzdem den
-größten Teil der Modlogik ab. Das ist der praktische Nutzen von Prinzip P1.
+This test runs in ~40 ms, needs no Minecraft, no Loom and no Gradle sync — and still covers the bulk of the mod
+logic. That is the practical payoff of principle P1.
 
 `versions/mc-1.20.1/src/main/java/com/example/mc1201/mixin/MinecraftServerMixin.java`:
 
@@ -315,9 +314,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Demonstriert einen Mixin, der auf allen Zielversionen identisch aussieht, aber
- * trotzdem pro Payload existiert — weil Refmap und Intermediary-Bindung pro Version
- * unterschiedlich sind.
+ * Demonstrates a mixin that looks identical on every target version yet still
+ * exists per payload — because refmap and intermediary binding differ per version.
  */
 @Mixin(MinecraftServer.class)
 public abstract class MinecraftServerMixin {
@@ -329,12 +327,12 @@ public abstract class MinecraftServerMixin {
 }
 ```
 
-## 35.5 Versionsspezifische Ressource als Demonstration
+## 35.5 A version-specific resource as a demonstration
 
-`assets/examplemod/models/item/ruby.json` existiert zweimal:
+`assets/examplemod/models/item/ruby.json` exists twice:
 
-* `common/src/main/resources/…` — Modell im ab 1.21.4 gültigen Format,
-* `versions/mc-1.20.1/src/main/resources/…` — Variante für das ältere Format.
+* `common/src/main/resources/…` — the model in the format valid from 1.21.4,
+* `versions/mc-1.20.1/src/main/resources/…` — the variant for the older format.
 
 In `build.gradle.kts`:
 
@@ -345,15 +343,15 @@ resources {
 }
 ```
 
-Der Merge-Report weist den Override aus; ohne `allowOverride` schlägt der Build mit `OMNI-1200` fehl. Damit ist
-jede Ressourcenabweichung zwischen Versionen im Code-Review sichtbar — eine der häufigsten Fehlerquellen in
-Multi-Version-Projekten.
+The merge report lists the override; without `allowOverride` the build fails with `OMNI-1200`. Every resource
+deviation between versions is therefore visible in code review — one of the most common sources of error in
+multi-version projects.
 
 ---
 
-# 36. Migration Guide — bestehende Fabric-Mod → FabricMultiLoader
+# 36. Migration Guide — an existing Fabric mod → FabricMultiLoader
 
-Ausgangslage: `ExampleMod` für Minecraft 1.21.4, klassisches Loom-Single-Project.
+Starting point: `ExampleMod` for Minecraft 1.21.4, a classic single-project Loom setup.
 
 ```
 examplemod/
@@ -364,7 +362,7 @@ examplemod/
     └── resources/{fabric.mod.json, examplemod.mixins.json, examplemod.accesswidener, assets/, data/}
 ```
 
-## 36.1 Schritt 1 — Struktur anlegen (mechanisch, 10 Minuten)
+## 36.1 Step 1 — create the structure (mechanical, 10 minutes)
 
 ```bash
 mkdir -p common/src/main/{java,resources,accesswidener,omni} common/src/test/java
@@ -376,27 +374,27 @@ git mv src/main/resources/examplemod.mixins.json \
        versions/mc-1.21.4/src/main/resources/examplemod-mc1214.mixins.json
 git mv src/main/resources/examplemod.accesswidener \
        versions/mc-1.21.4/src/main/resources/examplemod-mc1214.accesswidener
-git rm src/main/resources/fabric.mod.json          # wird ab jetzt generiert
+git rm src/main/resources/fabric.mod.json          # generated from now on
 ```
 
-Der gesamte bestehende Code landet zunächst **im Version-Modul**. Das ist Absicht: Nach diesem Schritt ist die
-Mod bereits eine funktionierende FabricMultiLoader-Mod mit *einem* Payload. Alles Weitere ist Verbesserung, nicht
-Voraussetzung.
+All existing code initially lands **inside the version module**. That is intentional: after this step the mod is
+already a working FabricMultiLoader mod with *one* payload. Everything that follows is improvement, not a
+prerequisite.
 
-## 36.2 Schritt 2 — Matrix und Buildfiles (15 Minuten)
+## 36.2 Step 2 — matrix and build files (15 minutes)
 
-`gradle/fabricmultiloader.toml` mit `[mod]`, `[container] baselineJava = 21`, `[framework]` und einem Block
-`[versions.mc1214]` (Werte aus dem alten `gradle.properties`).
+`gradle/fabricmultiloader.toml` with `[mod]`, `[container] baselineJava = 21`, `[framework]` and one block
+`[versions.mc1214]` (values taken from the old `gradle.properties`).
 
-`settings.gradle.kts`, Root-`build.gradle.kts`, `common/build.gradle.kts`,
-`versions/mc-1.21.4/build.gradle.kts` gemäß Kapitel 21 — jeweils 5–40 Zeilen. Das alte `build.gradle.kts` wird
-gelöscht; seine `dependencies` wandern nach `versions/mc-1.21.4/build.gradle.kts`, wobei
-`modImplementation("me.shedaniel.cloth:…")` zu `omniMod("me.shedaniel.cloth:cloth-config-fabric", key = "clothConfig")`
-wird.
+`settings.gradle.kts`, the root `build.gradle.kts`, `common/build.gradle.kts` and
+`versions/mc-1.21.4/build.gradle.kts` as in chapter 21 — 5 to 40 lines each. The old `build.gradle.kts` is deleted;
+its `dependencies` move to `versions/mc-1.21.4/build.gradle.kts`, where
+`modImplementation("me.shedaniel.cloth:…")` becomes
+`omniMod("me.shedaniel.cloth:cloth-config-fabric", key = "clothConfig")`.
 
-## 36.3 Schritt 3 — Entrypoint umstellen (20 Minuten)
+## 36.3 Step 3 — convert the entrypoint (20 minutes)
 
-Vorher:
+Before:
 
 ```java
 public final class ExampleMod implements ModInitializer {
@@ -404,18 +402,18 @@ public final class ExampleMod implements ModInitializer {
 }
 ```
 
-Nachher — zwei Klassen, weil sich die Verantwortung teilt:
+After — two classes, because the responsibility splits:
 
 ```java
 // versions/mc-1.21.4/src/main/java/com/example/mc1214/Platform1214.java
 public final class Platform1214 extends AbstractPlatform {
     @Override public void onInitialize(ModContext ctx) {
-        // alles, was Minecraft-Typen braucht — zunächst der komplette alte Code
+        // everything that needs Minecraft types — initially the entire old code
         ExampleModContent.registerAll();
         ExampleModNetworking.register();
     }
-    // registries()/networking()/commands()/events() zunächst über die
-    // Runtime-Defaults bzw. UnsupportedPlatformParts, solange kein Common-Code sie nutzt
+    // registries()/networking()/commands()/events() initially via the runtime defaults
+    // resp. UnsupportedPlatformParts, as long as no common code uses them
 }
 ```
 
@@ -429,66 +427,66 @@ public final class ExampleMod implements UniversalMod {
 }
 ```
 
-Zu diesem Zeitpunkt ist `common` fast leer und die Mod funktioniert vollständig.
-`./gradlew buildUniversalJar validateUniversalJar runClient1214` muss grün sein — **das ist der Meilenstein**,
-an dem die Migration technisch abgeschlossen ist.
+At this point `common` is almost empty and the mod works fully.
+`./gradlew buildUniversalJar validateUniversalJar runClient1214` must be green — **that is the milestone** at which
+the migration is technically complete.
 
-## 36.4 Schritt 4 — Zweite Version hinzufügen (der eigentliche Nutzen)
+## 36.4 Step 4 — add the second version (the actual payoff)
 
 ```bash
 ./gradlew addMinecraftVersion --mc=1.21.1 --range=">=1.21 <1.21.2" \
     --yarn=1.21.1+build.3 --loader=0.15.11 --fabric-api=0.102.0+1.21.1 --java=21
 ```
 
-Das Scaffolding erzeugt Verzeichnis, `build.gradle.kts`, Matrixeintrag, `Platform1211`/`Platform1211Factory`,
-leere Mixin-Configs und einen AW-Stub. Danach: `cp -r` des 1.21.4-Codes nach `mc1211`, Package-Rename,
-Kompilieren, Fehler abarbeiten. Jeder Compilerfehler ist eine echte API-Abweichung — genau die Arbeit, die
-niemand automatisieren kann.
+The scaffolding produces the directory, `build.gradle.kts`, the matrix entry,
+`Platform1211`/`Platform1211Factory`, empty mixin configs and an AW stub. Then: `cp -r` the 1.21.4 code into
+`mc1211`, rename the package, compile, work through the errors. Every compiler error is a real API deviation —
+exactly the work nobody can automate.
 
-## 36.5 Schritt 5 — Duplikate nach `common` ziehen (iterativ, optional)
+## 36.5 Step 5 — pull duplicates into `common` (iterative, optional)
 
-Jetzt zahlt sich Abstraktion aus. Reihenfolge nach Nutzen:
+Now abstraction pays off. In order of benefit:
 
-| Priorität | Was | Wie |
+| Priority | What | How |
 |---|---|---|
-| 1 | Reine Fachlogik (Berechnungen, Zustand, Config) | 1:1 nach `common`, keine Anpassung nötig |
-| 2 | Registrierungslisten | `Registries`-SPI verwenden (Kapitel 19.4) |
-| 3 | Networking | `ChannelSpec` + `PayloadCodec` (Kapitel 27) |
-| 4 | Commands | `CommandSpec` (Kapitel 28.2) |
-| 5 | Events | `Events` (Kapitel 28.3) |
-| 6 | Datagen-Eingaben | neutrale Specs in `common`, Provider im Payload |
-| — | Rendering, Weltgenerierung, Mixins | bleiben im Payload; Brücke über Hooks/Services |
+| 1 | Pure business logic (computations, state, config) | move 1:1 into `common`, no changes needed |
+| 2 | Registration lists | use the `Registries` SPI (chapter 19.4) |
+| 3 | Networking | `ChannelSpec` + `PayloadCodec` (chapter 27) |
+| 4 | Commands | `CommandSpec` (chapter 28.2) |
+| 5 | Events | `Events` (chapter 28.3) |
+| 6 | Datagen inputs | neutral specs in `common`, providers in the payload |
+| — | Rendering, world generation, mixins | stay in the payload; bridged via hooks/services |
 
-Nach diesem Schritt liegen typischerweise 60–85 % des Codes in `common`. Erfahrungswert aus der Beispielmod:
-142 Common-Klassen gegenüber 18–22 Klassen pro Payload.
+After this step typically 60–85 % of the code lives in `common`. Measured on the example mod: 142 common classes
+versus 18–22 classes per payload.
 
-## 36.6 Schritt 6 — Dritte Version, Ressourcen, Release
+## 36.6 Step 6 — third version, resources, release
 
-1.20.1 hinzufügen (analog Schritt 4). Ressourcenabweichungen mit `allowOverride` deklarieren. Validator laufen
-lassen, Integrationstests aktivieren, `publishUniversal` konfigurieren. Auf Modrinth/CurseForge die alten
-Einzeldateien **behalten** (sie funktionieren weiter) und ab jetzt nur noch die Universal-Datei
-veröffentlichen — mit einem Changelog-Hinweis, dass eine Datei nun alle Versionen abdeckt.
+Add 1.20.1 (as in step 4). Declare resource deviations with `allowOverride`. Run the validator, enable the
+integration tests, configure `publishUniversal`. On Modrinth/CurseForge **keep** the old per-version files (they
+keep working) and from now on publish only the universal file — with a changelog note that one file now covers all
+versions.
 
-## 36.7 Migrationsfallen
+## 36.7 Migration pitfalls
 
-| Falle | Erkennung | Lösung |
+| Pitfall | Detection | Resolution |
 |---|---|---|
-| Statische Felder mit MC-Typen in `common` | `OMNI-1042` | Handle-Pattern (`ItemHandle`) verwenden |
-| `Registry.register` direkt aus `common` | `OMNI-1042` | über `ctx.registries()` |
-| Alte `fabric.mod.json` noch in Ressourcen | `OMNI-1021` | löschen; alles kommt aus der Matrix/DSL |
-| Mixin-Config-Name ohne `payloadId` | `OMNI-1030` beim zweiten Payload | umbenennen |
-| Assets im Container statt im Payload | `OMNI-1023` | Assets nach `common/src/main/resources` (werden in Payloads gemergt) |
-| Java-21-Bytecode im Common bei 1.20.1-Support | `OMNI-1040` | `[container] baselineJava = 17` |
-| Kotlin-Runtime im Container | `OMNI-1184` | `fabric-language-kotlin` pro Payload als `omniMod` |
-| Mod-ID-Änderung befürchtet | — | Die Mod-ID bleibt **identisch**; nur zusätzliche Payload-IDs erscheinen (als ModMenu-Kinder) |
+| Static fields with MC types in `common` | `OMNI-1042` | use the handle pattern (`ItemHandle`) |
+| `Registry.register` called directly from `common` | `OMNI-1042` | go through `ctx.registries()` |
+| The old `fabric.mod.json` still in resources | `OMNI-1021` | delete it; everything comes from the matrix/DSL |
+| A mixin config name without the `payloadId` | `OMNI-1030` on the second payload | rename it |
+| Assets in the container instead of the payload | `OMNI-1023` | move assets to `common/src/main/resources` (they are merged into payloads) |
+| Java 21 bytecode in common with 1.20.1 support | `OMNI-1040` | `[container] baselineJava = 17` |
+| The Kotlin runtime in the container | `OMNI-1184` | `fabric-language-kotlin` per payload as an `omniMod` |
+| Fear of a mod ID change | — | The mod ID stays **identical**; only additional payload IDs appear (as ModMenu children) |
 
 ---
 
 # 37. Adding New Minecraft Versions
 
-## 37.1 Der Workflow in einem Befehl
+## 37.1 The workflow in one command
 
-Ausgangslage: 1.20.1, 1.21.1, 1.21.4 werden unterstützt. Neu erscheint **26.1 mit Java 25**.
+Starting point: 1.20.1, 1.21.1 and 1.21.4 are supported. **26.1 with Java 25** is released.
 
 ```bash
 ./gradlew addMinecraftVersion \
@@ -502,22 +500,22 @@ Ausgangslage: 1.20.1, 1.21.1, 1.21.4 werden unterstützt. Neu erscheint **26.1 m
     --copy-from=mc1214
 ```
 
-## 37.2 Was der Task genau tut
+## 37.2 What the task does exactly
 
-| Schritt | Ergebnis |
+| Step | Result |
 |---|---|
-| 1 | Fügt `[versions.mc261]` in `gradle/fabricmultiloader.toml` ein — an der richtigen Position (sortiert), mit allen Pflichtfeldern und den `capabilities` der Vorlage |
-| 2 | Erstellt `versions/mc-26.1/build.gradle.kts` (4 Zeilen + `dependencies`-Block der Vorlage) |
-| 3 | Erstellt `versions/mc-26.1/src/main/{java,resources}` |
-| 4 | Kopiert bei `--copy-from` den Java-Quellcode der Vorlage und **benennt das Package um** (`com.example.mc1214` → `com.example.mc261`), inklusive aller Importe und der `package`-Zeilen, sowie die Klassennamen-Suffixe (`Platform1214` → `Platform261`) |
-| 5 | Kopiert und benennt Mixin-Configs (`examplemod-mc261.mixins.json`, `.client.mixins.json`) und passt `package`, `refmap` und `compatibilityLevel` (`JAVA_25`) an |
-| 6 | Kopiert die AW-Datei als `examplemod-mc261.accesswidener` |
-| 7 | Prüft `[container] baselineJava` — bleibt bei 17 (Minimum), kein Eingriff nötig; hätte die neue Version das Minimum gesenkt, würde der Task es anpassen und darauf hinweisen |
-| 8 | Prüft Disjunktheit der neuen Range gegen alle bestehenden und bricht mit `OMNI-1010` ab, wenn sie überlappt |
-| 9 | Ergänzt die CI-Matrix in `.github/workflows/integration.yml` (per YAML-Patch, kommentiert markiert) |
-| 10 | Gibt eine Checkliste der verbleibenden manuellen Schritte aus |
+| 1 | Inserts `[versions.mc261]` into `gradle/fabricmultiloader.toml` — at the right position (sorted), with all required fields and the template's `capabilities` |
+| 2 | Creates `versions/mc-26.1/build.gradle.kts` (4 lines + the template's `dependencies` block) |
+| 3 | Creates `versions/mc-26.1/src/main/{java,resources}` |
+| 4 | With `--copy-from`, copies the template's Java sources and **renames the package** (`com.example.mc1214` → `com.example.mc261`), including all imports and `package` lines, as well as the class name suffixes (`Platform1214` → `Platform261`) |
+| 5 | Copies and renames the mixin configs (`examplemod-mc261.mixins.json`, `.client.mixins.json`) and adjusts `package`, `refmap` and `compatibilityLevel` (`JAVA_25`) |
+| 6 | Copies the AW file as `examplemod-mc261.accesswidener` |
+| 7 | Checks `[container] baselineJava` — it stays at 17 (the minimum), no intervention needed; had the new version lowered the minimum, the task would adjust it and say so |
+| 8 | Checks the disjointness of the new range against all existing ones and aborts with `OMNI-1010` if it overlaps |
+| 9 | Adds the CI matrix entry in `.github/workflows/integration.yml` (via a YAML patch, marked with a comment) |
+| 10 | Prints a checklist of the remaining manual steps |
 
-## 37.3 Ausgabe des Tasks
+## 37.3 The task's output
 
 ```
 > Task :addMinecraftVersion
@@ -550,131 +548,130 @@ Next steps
   8. add 26.1 to the README support table (or run ./gradlew omniReport)
 ```
 
-## 37.4 Der Java-25-Sprung im Detail
+## 37.4 The Java 25 jump in detail
 
-Beim Wechsel auf eine MC-Version mit höherem Java-Bedarf passiert genau das:
+When moving to an MC version with a higher Java requirement, exactly this happens:
 
-| Betroffen | Änderung | Automatisch? |
+| Affected | Change | Automatic? |
 |---|---|---|
-| `[versions.mc261].java = 25`, `javaRange = ">=25"` | neu | ja (CLI-Parameter) |
-| Toolchain des Version-Moduls | JDK 25, `options.release = 25` | ja (aus der Matrix) |
-| `payload.classfileMajor` | 69 | ja (gemessen beim Manifest-Bau) |
-| Payload-`depends.java` | `>=25` | ja |
-| Container-`depends.java` | bleibt `>=17` | ja (Minimum) |
-| Container-Bytecode | bleibt Classfile 61 | ja (unverändert) |
-| Mixin `compatibilityLevel` | `JAVA_25` | ja (Scaffolding) |
-| CI-Job | zusätzlicher Matrixeintrag mit `java: 25` | ja |
-| Entwickler-JDK | JDK 25 muss verfügbar sein | Toolchain-Resolver lädt es, sonst `OMNI-1090` |
+| `[versions.mc261].java = 25`, `javaRange = ">=25"` | new | yes (CLI parameter) |
+| The version module's toolchain | JDK 25, `options.release = 25` | yes (from the matrix) |
+| `payload.classfileMajor` | 69 | yes (measured while building the manifest) |
+| Payload `depends.java` | `>=25` | yes |
+| Container `depends.java` | stays `>=17` | yes (the minimum) |
+| Container bytecode | stays class file 61 | yes (unchanged) |
+| Mixin `compatibilityLevel` | `JAVA_25` | yes (scaffolding) |
+| CI job | an additional matrix entry with `java: 25` | yes |
+| Developer JDK | JDK 25 must be available | the toolchain resolver downloads it, otherwise `OMNI-1090` |
 
-Was **nicht** passiert: Die Universal-JAR wird auf Java 17 nicht unbenutzbar. Der Java-25-Payload wird auf einer
-Java-17-JVM vom Solver verworfen (`depends.java >=25`), seine Classfiles mit Major 69 werden nie gelesen. Die
-Mod funktioniert auf 1.20.1/Java 17 unverändert weiter. Das ist der Kern des Nutzenversprechens — und der Grund,
-warum die Architektur den Java-Sprung ohne Sonderfall verkraftet.
+What does **not** happen: the universal JAR does not become unusable on Java 17. The Java 25 payload is discarded by
+the solver on a Java 17 JVM (`depends.java >=25`), and its class files with major 69 are never read. The mod
+continues to work unchanged on 1.20.1/Java 17. That is the core of the value proposition — and the reason the
+architecture absorbs the Java jump without a special case.
 
-## 37.5 Wenn sich das Versionsschema ändert (`1.21.x` → `26.1`)
+## 37.5 When the version scheme changes (`1.21.x` → `26.1`)
 
-`SemVer.parseLenient("26.1")` ergibt `26.1.0`, `parseLenient("1.21.4")` ergibt `1.21.4`. Die Ordnung
-`1.21.4 < 26.1.0` ist korrekt (Major-Vergleich). Alle Ranges, Unions und Subtraktionen funktionieren unverändert.
-Fabric selbst normalisiert seine `minecraft`-Modversion auf dasselbe Schema, weshalb der Vergleich
-Container↔Loader konsistent bleibt.
+`SemVer.parseLenient("26.1")` yields `26.1.0`, `parseLenient("1.21.4")` yields `1.21.4`. The ordering
+`1.21.4 < 26.1.0` is correct (major comparison). All ranges, unions and subtractions work unchanged. Fabric itself
+normalises its `minecraft` mod version to the same scheme, so the container↔loader comparison stays consistent.
 
-Der einzige Punkt, der Aufmerksamkeit braucht: `minecraftOrdinal()` (Kapitel 18.5) — die Kompaktform muss
-weiterhin monoton sein. Definition: `major * 10000 + minor * 100 + patch` ⇒ `1.21.4` → 12104,
-`26.1` → 260100. Monoton, kollisionsfrei bis Minor 99/Patch 99, dokumentiert und getestet
-(`MinecraftOrdinalTest` mit Fällen 1.16.5, 1.20.1, 1.21.4, 26.1, 26.10, 27.0).
+The only point needing attention: `minecraftOrdinal()` (chapter 18.5) — the compact form must remain monotonic.
+Definition: `major * 10000 + minor * 100 + patch` ⇒ `1.21.4` → 12104, `26.1` → 260100. Monotonic, collision-free up
+to minor 99/patch 99, documented and tested (`MinecraftOrdinalTest` with the cases 1.16.5, 1.20.1, 1.21.4, 26.1,
+26.10, 27.0).
 
-## 37.6 Version entfernen
+## 37.6 Removing a version
 
 ```bash
 ./gradlew removeMinecraftVersion --id=mc1201 --confirm
 ```
 
-Löscht Matrixeintrag, Verzeichnis und CI-Eintrag, aktualisiert `baselineJava` (steigt eventuell von 17 auf 21!)
-und weist ausdrücklich darauf hin, dass damit die **Container-Baseline steigt** — was bedeutet, dass Common-Code
-neu kompiliert wird und nun Java-21-Bytecode enthalten darf. Das ist ein Breaking Change für Nutzer der alten
-MC-Version und wird deshalb mit einer Warnung und einem Changelog-Vorschlag begleitet.
+Deletes the matrix entry, the directory and the CI entry, updates `baselineJava` (which may rise from 17 to 21!) and
+points out explicitly that the **container baseline rises** — meaning common code is recompiled and may now contain
+Java 21 bytecode. That is a breaking change for users of the old MC version and is therefore accompanied by a
+warning and a suggested changelog entry.
 
 ---
 
 # 38. Documentation Architecture
 
-## 38.1 Struktur
+## 38.1 Structure
 
 ```
 docs/
-├── index.md                         Startseite: Was, für wen, in 60 Sekunden
-├── getting-started.md               Quick Start (Template → erste JAR in 10 Minuten)
-├── concepts.md                      Container, Payload, Common, Adapter, Runtime — Begriffe und Bild
-├── architecture.md                  Wie es funktioniert (verdichtete Fassung dieses Dokuments)
-├── gradle-plugin.md                 Plugin-IDs, Tasks, Konfiguration, Troubleshooting des Builds
-├── gradle-dsl.md                    generierte DSL-Referenz (alle Extensions, Properties, Defaults)
-├── matrix.md                        gradle/fabricmultiloader.toml — jedes Feld, jede Regel
-├── version-modules.md              Aufbau eines Version-Moduls, shared-Sourceset, Mapping-Provider
-├── common-code.md                  Was darf in common, Anti-Patterns, Stabilitätstabelle der Fabric-Events
-├── api-reference.md                Einstieg in die Javadoc-API-Referenz (verlinkt)
-├── registries.md                   Items, Blöcke, Sounds, Item-Gruppen, deferred registration
-├── networking.md                   ChannelSpec, Codecs, Threading, Versionsunterschiede
-├── commands.md                     CommandSpec, Argumenttypen, Permissions
-├── events.md                       Event-Katalog, Subscriptions, Lifecycle
-├── mixins.md                       Payload-Mixins, Namensschema, Conditional Mixins, Fallen
-├── access-wideners.md              shared vs. payload, Merge, @Accessor-Alternative
-├── resources.md                    Merge-Regeln, allowOverride, Datagen, Lang-Merge
+├── index.md                         Landing page: what, for whom, in 60 seconds
+├── getting-started.md               Quick start (template → first JAR in 10 minutes)
+├── concepts.md                      Container, payload, common, adapter, runtime — terms and a diagram
+├── architecture.md                  How it works (a condensed version of this document)
+├── gradle-plugin.md                 Plugin IDs, tasks, configuration, build troubleshooting
+├── gradle-dsl.md                    generated DSL reference (all extensions, properties, defaults)
+├── matrix.md                        gradle/fabricmultiloader.toml — every field, every rule
+├── version-modules.md              Structure of a version module, the shared source set, mapping providers
+├── common-code.md                  What may live in common, anti-patterns, the Fabric event stability table
+├── api-reference.md                Entry point into the Javadoc API reference (linked)
+├── registries.md                   Items, blocks, sounds, item groups, deferred registration
+├── networking.md                   ChannelSpec, codecs, threading, version differences
+├── commands.md                     CommandSpec, argument types, permissions
+├── events.md                       Event catalogue, subscriptions, lifecycle
+├── mixins.md                       Payload mixins, naming scheme, conditional mixins, pitfalls
+├── access-wideners.md              shared vs. payload, merging, the @Accessor alternative
+├── resources.md                    Merge rules, allowOverride, datagen, language merging
 ├── dependencies.md                 omniMod/omniOptionalMod/omniInclude, Fabric API, Kotlin
-├── client-server.md                Seitentrennung auf drei Ebenen
-├── testing.md                      FakeModContext, Unit-Tests, Integrationstests, CI
-├── distribution.md                 Modrinth, CurseForge, Dateinamen, Changelog, Checksummen
-├── migration.md                    Kapitel 36 als Anleitung
-├── adding-a-version.md             Kapitel 37 als Anleitung
-├── removing-a-version.md           inkl. Baseline-Effekt
-├── errors.md                       Jeder OMNI-Code mit Ursache, Diagnose, Lösung (Anker-Ziel aller Meldungen)
-├── troubleshooting.md              Symptomorientiert: „Mod erscheint nicht“, „Mixin-Crash“, „falsches Payload“
-├── faq.md                          20 Fragen inkl. „Ist das nicht riskant?“, „Wie groß wird die JAR?“
-├── performance.md                  Messwerte, Startzeit, Extraktion, Caching
-├── security.md                     Bedrohungsmodell, Hashes, Zip-Slip, tmp-Dateien
-├── compatibility.md               Garantien und Grenzen (Kapitel 41)
-├── versioning.md                   SemVer, Format-, Schema-, Plugin-Versionen (Kapitel 42)
-├── release-guide.md                Für Modautoren: von Tag zu veröffentlichter Datei
-├── contributing.md                 Für Framework-Contributors: Setup, Codestil, Java-8-Regel, Reviewregeln
+├── client-server.md                Side separation on three levels
+├── testing.md                      FakeModContext, unit tests, integration tests, CI
+├── distribution.md                 Modrinth, CurseForge, file names, changelog, checksums
+├── migration.md                    Chapter 36 as a how-to
+├── adding-a-version.md             Chapter 37 as a how-to
+├── removing-a-version.md           Including the baseline effect
+├── errors.md                       Every OMNI code with cause, diagnosis and fix (the anchor target of all messages)
+├── troubleshooting.md              Symptom-oriented: “mod does not appear”, “mixin crash”, “wrong payload”
+├── faq.md                          20 questions including “isn't this risky?”, “how big does the JAR get?”
+├── performance.md                  Measurements, startup time, extraction, caching
+├── security.md                     Threat model, hashes, Zip Slip, temp files
+├── compatibility.md               Guarantees and limits (chapter 41)
+├── versioning.md                   SemVer, format, schema and plugin versions (chapter 42)
+├── release-guide.md                For mod authors: from tag to published file
+├── contributing.md                 For framework contributors: setup, code style, the Java 8 rule, review rules
 ├── internals/
-│   ├── loader-assumption.md        Die tragende Annahme, Beweisführung, Conformance-Tests, Rückfallplan
-│   ├── boot-sequence.md            Phasen, Klassen, Zeitachse
-│   ├── container-format.md         Omni v1 Spezifikation (normativ)
-│   ├── manifest-schema.md          JSON-Schema, Felder, Forward-Compat
-│   ├── resolver.md                 Versionsalgebra, Disjunktheit, Range-Subtraktion
-│   ├── classloading.md             Ein-ClassLoader-Modell, Kollisionsfälle
-│   ├── validator-rules.md          alle 34 Regeln im Detail
-│   └── adr/                        ADR-001 … ADR-010 (Kapitel 43)
-└── api/                            generierte Javadoc (api, format, runtime-public)
+│   ├── loader-assumption.md        The load-bearing assumption, its derivation, conformance tests, fallback plan
+│   ├── boot-sequence.md            Phases, classes, timeline
+│   ├── container-format.md         The Omni v1 specification (normative)
+│   ├── manifest-schema.md          JSON schema, fields, forward compatibility
+│   ├── resolver.md                 Version algebra, disjointness, range subtraction
+│   ├── classloading.md             The one-ClassLoader model, collision cases
+│   ├── validator-rules.md          All 34 rules in detail
+│   └── adr/                        ADR-001 … ADR-011 (chapter 43)
+└── api/                            generated Javadoc (api, format, runtime-public)
 ```
 
-## 38.2 Inhaltsvorgaben pro Seite (Auszug der wichtigsten)
+## 38.2 Content requirements per page (an excerpt of the most important)
 
-| Seite | Muss enthalten |
+| Page | Must contain |
 |---|---|
-| `getting-started.md` | Voraussetzungen (JDK, Gradle), `git clone` des Templates, `runClient`, erste Codeänderung, `buildUniversalJar`, wo die Datei liegt, was als nächstes zu lesen ist. Maximal 10 Minuten Lesezeit, jeder Befehl kopierbar. |
-| `concepts.md` | Das Diagramm aus Kapitel 8.1, die fünf Begriffe, die drei Isolationsebenen, ein Satz zu „warum nicht ein Kompilat“. |
-| `common-code.md` | Erlaubte/verbotene Referenzen, drei Anti-Pattern mit Fehlercode, die Event-Stabilitätstabelle, Entscheidungsbaum „common vs. shared vs. payload“. |
-| `mixins.md` | Namensschema, warum Payload-Isolation funktioniert, `environment`-Zuordnung, Conditional Mixins mit vollständiger Config, die drei dokumentierten Fallen (Fremdmod-Targets, `targets`-Strings, `compatibilityLevel`). |
-| `errors.md` | Pro Code: Titel, Ursache, „so sieht die Meldung aus“, Diagnoseschritte, Lösung, verwandte Codes. Wird durch `ErrorCodeDocumentationTest` erzwungen. |
-| `internals/loader-assumption.md` | Herleitung aus dem Loader-Quellcode mit Klassennamen, die Conformance-Testliste, was passiert, wenn die Annahme bricht, der Rückfallpfad. **Die wichtigste Seite für künftige Maintainer.** |
-| `compatibility.md` | Tabelle aus Kapitel 41 mit Garantie/Grenze/Begründung/Workaround. |
-| `contributing.md` | Java-8-Regel für `format`/`api`/`runtime` mit Begründung, Verbot eigener ClassLoader, Pflicht zu Fehlercode + Doku-Anker + Test bei jedem neuen Fehlerpfad, Golden-File-Workflow. |
+| `getting-started.md` | Prerequisites (JDK, Gradle), `git clone` of the template, `runClient`, a first code change, `buildUniversalJar`, where the file ends up, what to read next. At most 10 minutes of reading, every command copy-pasteable. |
+| `concepts.md` | The diagram from chapter 8.1, the five terms, the three isolation levels, one sentence on “why not a single compilation”. |
+| `common-code.md` | Permitted/forbidden references, three anti-patterns with error codes, the event stability table, a decision tree “common vs. shared vs. payload”. |
+| `mixins.md` | The naming scheme, why payload isolation works, `environment` assignment, conditional mixins with a complete config, the three documented pitfalls (foreign-mod targets, `targets` strings, `compatibilityLevel`). |
+| `errors.md` | Per code: title, cause, “this is what the message looks like”, diagnostic steps, fix, related codes. Enforced by `ErrorCodeDocumentationTest`. |
+| `internals/loader-assumption.md` | Derivation from the loader source with class names, the conformance test list, what happens if the assumption breaks, the fallback path. **The most important page for future maintainers.** |
+| `compatibility.md` | The table from chapter 41 with guarantee/limit/rationale/workaround. |
+| `contributing.md` | The Java 8 rule for `format`/`api`/`runtime` with rationale, the ban on custom ClassLoaders, the requirement of an error code + doc anchor + test for every new failure path, the golden-file workflow. |
 
-## 38.3 Erzeugung und Prüfung
+## 38.3 Generation and checking
 
-* Site: MkDocs Material, `mkdocs.yml` im Repo, Deployment über `docs.yml` nach GitHub Pages.
-* Javadoc: `./gradlew javadocAll` erzeugt eine kombinierte Referenz für `api` + `format`; Doclet-Konfiguration
-  mit `-Xdoclint:all,-missing` und Fehlerabbruch bei defekten Links.
-* DSL-Referenz: aus KDoc der Extension-Interfaces generiert (`./gradlew generateDslReference`), damit
-  Dokumentation und Code nicht divergieren.
-* Prüfungen in CI: toter Link (`lychee`), fehlender Fehlercode-Abschnitt (`ErrorCodeDocumentationTest`),
-  Codeblöcke in `docs/**` müssen kompilieren (`docs-snippets`-Sourceset mit den Beispielen aus
-  `getting-started`, `common-code`, `networking`, `registries`).
+* Site: MkDocs Material, `mkdocs.yml` in the repo, deployment via `docs.yml` to GitHub Pages.
+* Javadoc: `./gradlew javadocAll` produces a combined reference for `api` + `format`; doclet configuration with
+  `-Xdoclint:all,-missing` and failure on broken links.
+* DSL reference: generated from the KDoc of the extension interfaces (`./gradlew generateDslReference`), so
+  documentation and code cannot diverge.
+* CI checks: dead links (`lychee`), missing error code sections (`ErrorCodeDocumentationTest`), and that code blocks
+  in `docs/**` compile (a `docs-snippets` source set holding the examples from `getting-started`, `common-code`,
+  `networking` and `registries`).
 
-Der letzte Punkt ist entscheidend für Langlebigkeit: **Alle Java-Beispiele der Dokumentation liegen als echte,
-kompilierte Quellen im Repository** und werden bei jedem Build gegen die aktuelle API kompiliert. Ein
-API-Umbau, der die Doku veraltet macht, bricht damit den Build.
+The last point is decisive for longevity: **all Java examples in the documentation exist as real, compiled sources
+in the repository** and are compiled against the current API on every build. An API overhaul that makes the docs
+stale therefore breaks the build.
 
 ---
 
-Weiter mit [Kapitel 39–42 — Security, Performance, Kompatibilitätsgrenzen, Versionierung](part-10-nfr.md).
+Continue with [chapters 39–42 — security, performance, compatibility limits, versioning](part-10-nfr.md).

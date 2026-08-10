@@ -1,297 +1,294 @@
-# 44. Implementierungsplan
+# 44. Implementation Plan
 
-Reihenfolge ist bindend: Jeder Schritt baut nur auf bereits fertigen Schritten auf. „Definition of Done“ (DoD)
-ist immer maschinell prüfbar. Aufwandsangaben sind Erfahrungswerte für einen erfahrenen Java-/Gradle-Entwickler.
+The order is binding: every step builds only on steps already completed. “Definition of Done” (DoD) is always
+machine-checkable. Effort figures are experience values for an experienced Java/Gradle developer.
 
-## Meilenstein M0 — Repository-Gerüst (Schritt 1)
+## Milestone M0 — repository scaffold (step 1)
 
-### Schritt 1 — Repo, Build, CI-Skelett
+### Step 1 — repository, build, CI skeleton
 
 | | |
 |---|---|
-| **Dateien** | `settings.gradle.kts` (includes: `format`, `api`, `runtime`, `processor`, `gradle-plugin`, `testing`, `example`), Root-`build.gradle.kts` (Konventions-Plugins: `java-library`, `--release`-Setzung, `maven-publish`, `japicmp`), `gradle/libs.versions.toml`, `gradle.properties` (`org.gradle.parallel=true`, `org.gradle.caching=true`, `org.gradle.configuration-cache=true`), Wrapper (Gradle 8.12), `LICENSE` (aktuell proprietär, „All Rights Reserved"; Umstellung auf Apache-2.0 vor der ersten produktiven Nutzung durch Dritte — zwingend, weil die Runtime per Jar-in-Jar in fremde Mod-JARs eingebettet wird und das Weiterverbreitung ist), `NOTICE`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, `.editorconfig`, `.gitattributes` (`* text=auto eol=lf`), `.github/workflows/build.yml` (nur Kompilieren + Tests) |
-| **Konventionen** | `format`/`api`/`runtime`/`processor`: `options.release = 8`, Checkstyle-Regel „kein `var`, keine Records, kein `sealed`“; `gradle-plugin`/`testing`: `release = 17` |
-| **Tests** | ein Smoke-Test pro Modul, damit `check` überall greift |
-| **DoD** | `./gradlew build` grün; `./gradlew build --configuration-cache` beim zweiten Lauf „reused“; CI grün; `japicmp` aktiv (noch ohne Baseline) |
-| **Abhängigkeiten** | — |
-| **Aufwand** | 1 Tag |
+| **Files** | `settings.gradle.kts` (includes: `format`, `api`, `runtime`, `processor`, `gradle-plugin`, `testing`, `example`), the root `build.gradle.kts` (convention plugins: `java-library`, `--release` settings, `maven-publish`, `japicmp`), `gradle/libs.versions.toml`, `gradle.properties` (`org.gradle.parallel=true`, `org.gradle.caching=true`, `org.gradle.configuration-cache=true`), the wrapper (Gradle 8.12), `LICENSE` (currently proprietary, “All Rights Reserved”; the move to Apache-2.0 must happen before third parties use it productively — mandatory, because the runtime is embedded into foreign mod JARs via Jar-in-Jar and that is redistribution), `NOTICE`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, `.editorconfig`, `.gitattributes` (`* text=auto eol=lf`), `.github/workflows/build.yml` (compile + tests only) |
+| **Conventions** | `format`/`api`/`runtime`/`processor`: `options.release = 8`, a Checkstyle rule “no `var`, no records, no `sealed`”; `gradle-plugin`/`testing`: `release = 17` |
+| **Tests** | one smoke test per module, so `check` has something to do everywhere |
+| **DoD** | `./gradlew build` green; `./gradlew build --configuration-cache` reports “reused” on the second run; CI green; `japicmp` active (no baseline yet) |
+| **Depends on** | — |
+| **Effort** | 1 day |
 
 ---
 
-## Meilenstein M1 — `format` (Schritte 2–5)
+## Milestone M1 — `format` (steps 2–5)
 
-Alles hier ist reine, minecraftfreie Logik und vollständig unit-testbar. M1 ist die Grundlage für Runtime **und**
-Gradle-Plugin; ein Fehler hier propagiert überall hin, deshalb steht es zuerst und mit der höchsten
-Testabdeckung (Ziel: 95 % Zeilen).
+Everything here is pure, Minecraft-free logic and fully unit-testable. M1 is the foundation for both the runtime
+**and** the Gradle plugin; a defect here propagates everywhere, which is why it comes first and carries the highest
+test coverage (target: 95 % of lines).
 
-### Schritt 2 — JSON-Parser und Fehlerinfrastruktur
-
-| | |
-|---|---|
-| **Klassen** | `format.json`: `Json`, `JsonValue`, `JsonObject`, `JsonArray`, `JsonString`, `JsonNumber`, `JsonBool`, `JsonNull`, `JsonReader`, `JsonWriter`, `JsonPointer`, `JsonLimits`, `JsonFormatException`<br>`format.error`: `ErrorCode` (Enum mit `id()`, `title()`, `severity()`), `OmniException`, `OmniApiMisuseException`, `Messages` (Textbausteine, eine Methode pro Meldung) |
-| **Tests** | `JsonParserTest` (RFC-8259-Suite + 40 Fehlerfälle mit erwarteter Zeile/Spalte), `JsonWriterRoundTripTest`, `JsonLimitsTest` (Größe/Tiefe/Anzahl/Stringlänge ⇒ `OMNI-3003`), `JsonPointerTest`, `ErrorCodeUniquenessTest` (keine doppelten IDs, IDs im richtigen Bereich) |
-| **DoD** | Parser besteht die Suite; jede Fehlermeldung enthält Zeile, Spalte und Quellzeile mit Caret; Writer-Ausgabe ist bytestabil |
-| **Aufwand** | 2 Tage |
-
-### Schritt 3 — Versionsalgebra
+### Step 2 — JSON parser and error infrastructure
 
 | | |
 |---|---|
-| **Klassen** | `format.version`: `SemVer`, `SemVerParser`, `VersionPredicate` (+ `Comparison`, `AnyPredicate`, `AndPredicate`), `VersionPredicateParser`, `Interval`, `VersionRange`, `JavaVersions`, `MinecraftVersions` (`ordinal()`, `normalize()`) |
-| **Tests** | `SemVerParseTest` (parametrisiert über die vollständige Tabelle aus Kapitel 12.2), `SemVerCompareTest` (inkl. Prerelease-Ordnung, Build-Neutralität, `UNKNOWN`), `VersionPredicateParseTest`, `VersionRangeAlgebraTest` (union/intersect/subtract; Eigenschaftstests: Idempotenz, Kommutativität von union/intersect, `a \ a = ∅`, `(a ∪ b) \ b ⊆ a`), `UnionNormalizationTest`, `JavaVersionsTest`, `MinecraftOrdinalTest` (1.16.5, 1.20.1, 1.21.4, 26.1, 26.10, 27.0 — Monotonie) |
-| **DoD** | 500 generierte Zufallsintervalle erfüllen alle Algebra-Eigenschaften; `toPredicates()` ist round-trip-stabil |
-| **Abhängigkeiten** | Schritt 2 |
-| **Aufwand** | 3 Tage |
+| **Classes** | `format.json`: `Json`, `JsonValue`, `JsonObject`, `JsonArray`, `JsonString`, `JsonNumber`, `JsonBool`, `JsonNull`, `JsonReader`, `JsonWriter`, `JsonPointer`, `JsonLimits`, `JsonFormatException`<br>`format.error`: `ErrorCode` (an enum with `id()`, `title()`, `severity()`), `OmniException`, `OmniApiMisuseException`, `Messages` (text building blocks, one method per message) |
+| **Tests** | `JsonParserTest` (the RFC 8259 suite + 40 failure cases with expected line/column), `JsonWriterRoundTripTest`, `JsonLimitsTest` (size/depth/count/string length ⇒ `OMNI-3003`), `JsonPointerTest`, `ErrorCodeUniquenessTest` (no duplicate IDs, IDs in the right range) |
+| **DoD** | The parser passes the suite; every error message contains line, column and the source line with a caret; writer output is byte-stable |
+| **Effort** | 2 days |
 
-### Schritt 4 — Manifest-Modell und Parser
-
-| | |
-|---|---|
-| **Klassen** | `format.manifest`: `ContainerManifest`, `ContainerInfo`, `RuntimeRef`, `EntrypointSet`, `PayloadDescriptor`, `Requirements`, `EnvironmentConstraint`, `MappingsInfo`, `MixinConfigRef`, `DiagnosticsInfo`, `ManifestReader`, `ManifestWriter`, `PayloadDescriptorReader/Writer`, `SafePaths` (Pfadvalidierung aus Kapitel 39.2), `Identifiers` (Mod-ID-/FQCN-Validierung) |
-| **Tests** | `ManifestReaderTest` (Pflichtfelder, Typfehler mit Pointer, unbekannte Felder, `minRuntime`, `schemaVersion`), `ManifestRoundTripTest` (bytegleich, kanonische Schlüsselreihenfolge), `SafePathsTest` (25 Angriffsmuster: absolut, `..`, Backslash, NUL, doppelter Slash, außerhalb erlaubter Wurzeln), `IdentifiersTest` |
-| **DoD** | Golden-File des Beispielmanifests aus Kapitel 11.2 wird gelesen, geschrieben und ist bytegleich; alle Angriffsmuster abgelehnt |
-| **Abhängigkeiten** | Schritte 2–3 |
-| **Aufwand** | 2 Tage |
-
-### Schritt 5 — Resolver und Disjunktheit
+### Step 3 — version algebra
 
 | | |
 |---|---|
-| **Klassen** | `format.payload`: `PayloadResolver`, `PayloadMatcher`, `MatchResult`, `Rejection`, `Constraint` (Enum), `Domain`, `DomainCell`, `DomainDisjunctifier`, `ResolutionReport`<br>`format.hash`: `Sha256` |
-| **Tests** | `PayloadMatcherTest` (jede Constraint-Art einzeln + kombiniert; Vollständigkeit der Rejection-Liste), `DomainDisjunctifierTest` (30 Szenarien: catch-all + spezifisch, Java-Varianten, client/server, vollständige Verdeckung ⇒ `OMNI-1015`, leere Restmenge), `ResolutionReportTest` (Golden-File der beiden Berichte aus Kapitel 29.2), `Sha256Test` |
-| **DoD** | Für 200 generierte Payload-Mengen gilt nach Disjunktifizierung: paarweise Schnitt leer **und** Union unverändert; Berichte entsprechen dem Golden-File zeichengenau |
-| **Abhängigkeiten** | Schritte 2–4 |
-| **Aufwand** | 4 Tage |
+| **Classes** | `format.version`: `SemVer`, `SemVerParser`, `VersionPredicate` (+ `Comparison`, `AnyPredicate`, `AndPredicate`), `VersionPredicateParser`, `Interval`, `VersionRange`, `JavaVersions`, `MinecraftVersions` (`ordinal()`, `normalize()`) |
+| **Tests** | `SemVerParseTest` (parameterised over the complete table from chapter 12.2), `SemVerCompareTest` (including prerelease ordering, build neutrality, `UNKNOWN`), `VersionPredicateParseTest`, `VersionRangeAlgebraTest` (union/intersect/subtract; property tests: idempotence, commutativity of union/intersect, `a \ a = ∅`, `(a ∪ b) \ b ⊆ a`), `UnionNormalizationTest`, `JavaVersionsTest`, `MinecraftOrdinalTest` (1.16.5, 1.20.1, 1.21.4, 26.1, 26.10, 27.0 — monotonicity) |
+| **DoD** | 500 generated random intervals satisfy all algebraic properties; `toPredicates()` is round-trip-stable |
+| **Depends on** | step 2 |
+| **Effort** | 3 days |
+
+### Step 4 — manifest model and parser
+
+| | |
+|---|---|
+| **Classes** | `format.manifest`: `ContainerManifest`, `ContainerInfo`, `RuntimeRef`, `EntrypointSet`, `PayloadDescriptor`, `Requirements`, `EnvironmentConstraint`, `MappingsInfo`, `MixinConfigRef`, `DiagnosticsInfo`, `ManifestReader`, `ManifestWriter`, `PayloadDescriptorReader/Writer`, `SafePaths` (the path validation from chapter 39.2), `Identifiers` (mod ID/FQCN validation) |
+| **Tests** | `ManifestReaderTest` (required fields, type errors with pointers, unknown fields, `minRuntime`, `schemaVersion`), `ManifestRoundTripTest` (byte-identical, canonical key order), `SafePathsTest` (25 attack patterns: absolute, `..`, backslash, NUL, double slash, outside the permitted roots), `IdentifiersTest` |
+| **DoD** | The golden file of the example manifest from chapter 11.2 is read, written back and byte-identical; all attack patterns rejected |
+| **Depends on** | steps 2–3 |
+| **Effort** | 2 days |
+
+### Step 5 — resolver and disjointness
+
+| | |
+|---|---|
+| **Classes** | `format.payload`: `PayloadResolver`, `PayloadMatcher`, `MatchResult`, `Rejection`, `Constraint` (enum), `Domain`, `DomainCell`, `DomainDisjunctifier`, `ResolutionReport`<br>`format.hash`: `Sha256` |
+| **Tests** | `PayloadMatcherTest` (each constraint kind individually and combined; completeness of the rejection list), `DomainDisjunctifierTest` (30 scenarios: catch-all + specific, Java variants, client/server, complete shadowing ⇒ `OMNI-1015`, an empty remainder), `ResolutionReportTest` (golden files of both reports from chapter 29.2), `Sha256Test` |
+| **DoD** | For 200 generated payload sets, after disjunctification: pairwise intersections empty **and** the union unchanged; reports match the golden file character for character |
+| **Depends on** | steps 2–4 |
+| **Effort** | 4 days |
 
 ---
 
-## Meilenstein M2 — `api` (Schritt 6)
+## Milestone M2 — `api` (step 6)
 
-### Schritt 6 — Die vollständige Entwickler-SPI
+### Step 6 — the complete developer SPI
 
 | | |
 |---|---|
-| **Klassen** | `api`: `UniversalMod`, `UniversalClientMod`, `UniversalServerMod`, `UniversalPreLaunch`, `UniversalEntrypoint` (Annotation), `ModContext`, `Side`, `Id`, `ModLogger`, `LifecyclePhase`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader`, `ImplementedByMod`/`ImplementedByFramework` (Annotationen)<br>`api.platform`: `Platform`, `PlatformFactory`, `PlatformInfo`, `AbstractPlatform`, `PreLaunchContext`, `CrashContext`<br>`api.registry`: `Registries`, `ItemSpec`, `BlockSpec`, `SoundSpec`, `ItemGroupSpec`, `ItemHandle`, `BlockHandle`, `SoundHandle`, `ItemGroupHandle`, `Rarity`, `ItemBehavior`, `UseContext`, `BlockUseContext`, `UseResult`, `Hand`<br>`api.net`: `Networking`, `ChannelSpec`, `ChannelHandle`, `PayloadCodec`, `ByteSink`, `ByteSource`, `C2SReceiver`, `S2CReceiver`, `TypedPayloadApi`<br>`api.command`: `Commands`, `CommandSpec`, `Arg`, `CommandInvocation`, `CommandSender`, `Permission`<br>`api.event`: `Events`, `Subscription`, `EventKey`, `ServerRef`, `BlockBreakHandler`, `ItemUseHandler`<br>`api.ref`: `Unwrappable`, `PlayerRef`, `WorldRef`, `ItemStackRef`, `BlockPosRef`<br>`api.text`: `Text`, `TextColor`, `TextStyle`, `ClickAction`, `HoverAction`<br>`api.config`: `ConfigHandle`, `ConfigCodec`<br>`api.resource`: `ResourceReloadListener`, `PackHandle` |
-| **Tests** | `ApiSurfaceTest` (jede öffentliche Klasse trägt `@ImplementedByMod` oder `@ImplementedByFramework`; alle `@ImplementedByMod`-Interfaces haben ausschließlich abstrakte Methoden, die für 1.0 vorgesehen sind), `Java8ComplianceTest` (Classfile-Major aller `api`-Klassen == 52), `SpecBuilderTest` (Builder-Validierung, Unveränderlichkeit, `equals`/`hashCode`), `TextModelTest` |
-| **DoD** | `api` kompiliert mit `--release 8`; `japicmp`-Baseline gesetzt; Javadoc ohne Doclint-Fehler; alle Beispielsignaturen aus Kapitel 18/19/27/28 kompilieren gegen diesen Stand |
-| **Abhängigkeiten** | M1 |
-| **Aufwand** | 4 Tage |
+| **Classes** | `api`: `UniversalMod`, `UniversalClientMod`, `UniversalServerMod`, `UniversalPreLaunch`, `UniversalEntrypoint` (annotation), `ModContext`, `Side`, `Id`, `ModLogger`, `LifecyclePhase`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader`, `ImplementedByMod`/`ImplementedByFramework` (annotations)<br>`api.platform`: `Platform`, `PlatformFactory`, `PlatformInfo`, `AbstractPlatform`, `PreLaunchContext`, `CrashContext`<br>`api.registry`: `Registries`, `ItemSpec`, `BlockSpec`, `SoundSpec`, `ItemGroupSpec`, `ItemHandle`, `BlockHandle`, `SoundHandle`, `ItemGroupHandle`, `Rarity`, `ItemBehavior`, `UseContext`, `BlockUseContext`, `UseResult`, `Hand`<br>`api.net`: `Networking`, `ChannelSpec`, `ChannelHandle`, `PayloadCodec`, `ByteSink`, `ByteSource`, `C2SReceiver`, `S2CReceiver`, `TypedPayloadApi`<br>`api.command`: `Commands`, `CommandSpec`, `Arg`, `CommandInvocation`, `CommandSender`, `Permission`<br>`api.event`: `Events`, `Subscription`, `EventKey`, `ServerRef`, `BlockBreakHandler`, `ItemUseHandler`<br>`api.ref`: `Unwrappable`, `PlayerRef`, `WorldRef`, `ItemStackRef`, `BlockPosRef`<br>`api.text`: `Text`, `TextColor`, `TextStyle`, `ClickAction`, `HoverAction`<br>`api.config`: `ConfigHandle`, `ConfigCodec`<br>`api.resource`: `ResourceReloadListener`, `PackHandle` |
+| **Tests** | `ApiSurfaceTest` (every public class carries `@ImplementedByMod` or `@ImplementedByFramework`; all `@ImplementedByMod` interfaces contain only the abstract methods intended for 1.0), `Java8ComplianceTest` (class file major of all `api` classes == 52), `SpecBuilderTest` (builder validation, immutability, `equals`/`hashCode`), `TextModelTest` |
+| **DoD** | `api` compiles with `--release 8`; the `japicmp` baseline is set; Javadoc without doclint errors; every example signature from chapters 18/19/27/28 compiles against this state |
+| **Depends on** | M1 |
+| **Effort** | 4 days |
 
 ---
 
-## Meilenstein M3 — `runtime` (Schritte 7–9)
+## Milestone M3 — `runtime` (steps 7–9)
 
-### Schritt 7 — Bootstrap, Environment, Container-Discovery
-
-| | |
-|---|---|
-| **Klassen** | `runtime.log`: `Log`, `Slf4jBridge`, `Formatter`<br>`runtime.env`: `EnvironmentDetector`, `Environment`<br>`runtime.boot`: `RuntimeBootstrap`, `RuntimeRegistry`, `ContainerRuntime`, `LifecycleStateMachine`, `IntegrityChecker`<br>`runtime.diag`: `DiagnosticReport`, `ReportWriter`, `DebugDump`<br>`runtime.entrypoint`: `ContainerPreLaunch`<br>Ressource: `src/main/resources/fabric.mod.json` (Mod `fabricmultiloader`, `depends` fabricloader ≥0.14.0, java ≥8) |
-| **Tests** | `EnvironmentDetectorTest`, `ContainerDiscoveryTest`, `PayloadActivationTest` (1/0/n Payloads), `LifecycleStateMachineTest`, `IntegrityCheckerTest`, `DiagnosticReportTest` (Golden-File), `LogBridgeTest` (zwei Classpath-Varianten: mit/ohne SLF4J), `AtomicReportWriteTest` (Temp+Move, nicht schreibbares Verzeichnis bricht nicht ab) |
-| **DoD** | Alle Tests grün gegen `FakeFabricLoader`; Classfile-Major aller Runtime-Klassen == 52; kein Import aus `net.fabricmc.loader.impl` (ArchUnit-artiger Bytecode-Test `ForbiddenReferencesTest`) |
-| **Abhängigkeiten** | M1, M2 |
-| **Aufwand** | 4 Tage |
-
-### Schritt 8 — Payload-Aktivierung, Context, Lifecycle-Entrypoints
+### Step 7 — bootstrap, environment, container discovery
 
 | | |
 |---|---|
-| **Klassen** | `runtime.payload`: `PlatformLoader`, `PayloadActivation`<br>`runtime.context`: `ModContextImpl`, `ServiceRegistryImpl`, `CapabilityResolver`, `ModLoggerImpl`, `PreLaunchContextImpl`, `CrashContextImpl`<br>`runtime.entrypoint`: `PayloadPreLaunch`, `PayloadMain`, `PayloadClient`, `PayloadServer`<br>`runtime.boot`: `CommonBootstrap` (instanziiert die Entrypoint-Klassen des Modcodes), `DevFallback` |
-| **Tests** | `PlatformLoaderTest` (fehlende Klasse, falscher Typ, `null`, werfende Factory ⇒ `OMNI-2020…2023`; FQCN außerhalb der Payload-Packages ⇒ `OMNI-2024`), `CommonBootstrapTest`, `ModContextImplTest`, `ServiceRegistryImplTest` (Registrierung nur in der erlaubten Phase), `CapabilityResolverTest`, `DevFallbackTest`, `EntrypointOrderTest` (Container vor Payload, idempotent bei Doppelaufruf) |
-| **DoD** | Vollständiger Lifecycle mit einer Fake-Platform durchlaufbar; alle 4xxx-Fehlerpfade getestet |
-| **Abhängigkeiten** | Schritt 7 |
-| **Aufwand** | 4 Tage |
+| **Classes** | `runtime.log`: `Log`, `Slf4jBridge`, `Formatter`<br>`runtime.env`: `EnvironmentDetector`, `Environment`<br>`runtime.boot`: `RuntimeBootstrap`, `RuntimeRegistry`, `ContainerRuntime`, `LifecycleStateMachine`, `IntegrityChecker`<br>`runtime.diag`: `DiagnosticReport`, `ReportWriter`, `DebugDump`<br>`runtime.entrypoint`: `ContainerPreLaunch`<br>resource: `src/main/resources/fabric.mod.json` (mod `fabricmultiloader`, `depends` fabricloader ≥0.14.0, java ≥8) |
+| **Tests** | `EnvironmentDetectorTest`, `ContainerDiscoveryTest`, `PayloadActivationTest` (1/0/n payloads), `LifecycleStateMachineTest`, `IntegrityCheckerTest`, `DiagnosticReportTest` (golden file), `LogBridgeTest` (two classpath variants: with/without SLF4J), `AtomicReportWriteTest` (temp+move; an unwritable directory does not abort) |
+| **DoD** | All tests green against `FakeFabricLoader`; class file major of all runtime classes == 52; no import from `net.fabricmc.loader.impl` (an ArchUnit-style bytecode test `ForbiddenReferencesTest`) |
+| **Depends on** | M1, M2 |
+| **Effort** | 4 days |
 
-### Schritt 9 — Versionsstabile Adapter und Mixin-Plugin
+### Step 8 — payload activation, context, lifecycle entrypoints
 
 | | |
 |---|---|
-| **Klassen** | `runtime.adapter`: `CommandsImpl` (Brigadier über `CommandRegistrationCallback`), `EventsImpl` (stabile Fabric-API-Events), `TextConverter`, `FeedbackAdapter` (Capability-basiert)<br>`runtime.mixin`: `ConditionalMixinPlugin`, `ConfigLocator`, `PluginLog`, `Condition` |
-| **Tests** | `ConditionalMixinPluginTest` (Bedingungsmatrix, fail-open, Debug-Ausgabe), `MixinPluginIsolationTest` (Bytecode-Test: Plugin referenziert nur JDK/`format`/`FabricLoader`-API ⇒ `OMNI-1035`), `CommandSpecTranslationTest` (gegen ein Brigadier-Fake), `EventsImplTest` (gegen Fabric-API-Fakes) |
-| **DoD** | `CommandsImpl`/`EventsImpl` kompilieren gegen Fabric API 0.92.2 (1.20.1) **und** 0.114.0 (1.21.4) — geprüft durch zwei zusätzliche `compileOnly`-Sourcesets im Modul `runtime`; Isolation des Mixin-Plugins bytecodegeprüft |
-| **Abhängigkeiten** | Schritt 8 |
-| **Aufwand** | 4 Tage |
+| **Classes** | `runtime.payload`: `PlatformLoader`, `PayloadActivation`<br>`runtime.context`: `ModContextImpl`, `ServiceRegistryImpl`, `CapabilityResolver`, `ModLoggerImpl`, `PreLaunchContextImpl`, `CrashContextImpl`<br>`runtime.entrypoint`: `PayloadPreLaunch`, `PayloadMain`, `PayloadClient`, `PayloadServer`<br>`runtime.boot`: `CommonBootstrap` (instantiates the mod code's entrypoint classes), `DevFallback` |
+| **Tests** | `PlatformLoaderTest` (missing class, wrong type, `null`, a throwing factory ⇒ `OMNI-2020…2023`; an FQCN outside the payload packages ⇒ `OMNI-2024`), `CommonBootstrapTest`, `ModContextImplTest`, `ServiceRegistryImplTest` (registration only in the permitted phase), `CapabilityResolverTest`, `DevFallbackTest`, `EntrypointOrderTest` (container before payload, idempotent on double invocation) |
+| **DoD** | The full lifecycle runs through with a fake platform; all 4xxx failure paths tested |
+| **Depends on** | step 7 |
+| **Effort** | 4 days |
 
-> Anmerkung zur Architektur: `runtime` deklariert Fabric API ausschließlich `compileOnly` und in **zwei**
-> Varianten (ältestes und neuestes Matrix-Ziel), um sicherzustellen, dass die „versionsstabilen“ Adapter
-> tatsächlich stabil sind. Schlägt einer der beiden Kompiliervorgänge fehl, gehört die Funktionalität nicht in
-> die Runtime, sondern in die Payloads.
+### Step 9 — version-stable adapters and the mixin plugin
+
+| | |
+|---|---|
+| **Classes** | `runtime.adapter`: `CommandsImpl` (Brigadier via `CommandRegistrationCallback`), `EventsImpl` (the stable Fabric API events), `TextConverter`, `FeedbackAdapter` (capability-based)<br>`runtime.mixin`: `ConditionalMixinPlugin`, `ConfigLocator`, `PluginLog`, `Condition` |
+| **Tests** | `ConditionalMixinPluginTest` (the condition matrix, fail-open, debug output), `MixinPluginIsolationTest` (a bytecode test: the plugin references only the JDK/`format`/`FabricLoader` API ⇒ `OMNI-1035`), `CommandSpecTranslationTest` (against a Brigadier fake), `EventsImplTest` (against Fabric API fakes) |
+| **DoD** | `CommandsImpl`/`EventsImpl` compile against Fabric API 0.92.2 (1.20.1) **and** 0.114.0 (1.21.4) — verified by two additional `compileOnly` source sets in the `runtime` module; the mixin plugin's isolation verified at the bytecode level |
+| **Depends on** | step 8 |
+| **Effort** | 4 days |
+
+> Architectural note: `runtime` declares Fabric API exclusively as `compileOnly` and in **two** variants (the oldest
+> and the newest matrix target), to make sure the “version-stable” adapters really are stable. If either compilation
+> fails, the functionality does not belong in the runtime but in the payloads.
 
 ---
 
-## Meilenstein M4 — `testing` und Loader-Conformance (Schritte 10–11)
+## Milestone M4 — `testing` and loader conformance (steps 10–11)
 
-### Schritt 10 — Test-Harness
-
-| | |
-|---|---|
-| **Klassen** | `testing`: `FakeFabricLoader`, `FakeModContext` (+ `RecordedRegistrations`), `FakePlatform`, `FakeComponents`, `ManifestBuilder`, `PayloadJarBuilder`, `ContainerJarBuilder`, `JarFixtures`, `GoldenFiles` |
-| **Tests** | `FakeModContextTest` (zeichnet Items, Blöcke, Kanäle, Commands, Events korrekt auf), `JarBuilderTest` (erzeugte Fixtures sind valide ZIPs mit erwarteter Struktur) |
-| **DoD** | Ein 20-zeiliger Unit-Test kann Common-Code gegen drei simulierte MC-Versionen prüfen (Beispiel aus Kapitel 32.7 läuft) |
-| **Abhängigkeiten** | M2, M3 |
-| **Aufwand** | 3 Tage |
-
-### Schritt 11 — Loader-Conformance-Harness
+### Step 10 — the test harness
 
 | | |
 |---|---|
-| **Klassen/Dateien** | `testing`: `LoaderConformanceHarness`, `LoaderVersion`, `SyntheticContainer`, `ResolutionProbe`; `conformanceTest`-Sourceset mit den 8 Testfällen aus Kapitel 32.4; `.github/workflows/conformance.yml` |
-| **Tests** | `NestedUnsatisfiableIsDropped`, `ExactlyOneSelected`, `ProvidesExclusivity`, `BreaksExclusivity`, `JavaDependencyEvaluated`, `EnvironmentEvaluated`, `RuntimeDeduplication`, `ContainerRangeError` — jeweils gegen Loader 0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.x |
-| **DoD** | Alle 8 Fälle × 5 Loader-Versionen grün; CI-Workflow erstellt bei Fehlschlag automatisch ein Issue; `docs/internals/loader-assumption.md` verfasst |
-| **Abhängigkeiten** | Schritt 10 |
-| **Aufwand** | 4 Tage |
+| **Classes** | `testing`: `FakeFabricLoader`, `FakeModContext` (+ `RecordedRegistrations`), `FakePlatform`, `FakeComponents`, `ManifestBuilder`, `PayloadJarBuilder`, `ContainerJarBuilder`, `JarFixtures`, `GoldenFiles` |
+| **Tests** | `FakeModContextTest` (records items, blocks, channels, commands and events correctly), `JarBuilderTest` (the generated fixtures are valid ZIPs with the expected structure) |
+| **DoD** | A 20-line unit test can check common code against three simulated MC versions (the example from chapter 32.7 runs) |
+| **Depends on** | M2, M3 |
+| **Effort** | 3 days |
 
-> **Dieser Schritt ist ein Gate.** Schlägt er fehl, ist die Architektur widerlegt und der Rückfallpfad
-> (Slim-Jars als Primärprodukt) muss vor allen weiteren Schritten bewertet werden. Deshalb steht er **vor** dem
-> Gradle-Plugin und nicht danach.
+### Step 11 — the loader conformance harness
+
+| | |
+|---|---|
+| **Classes/files** | `testing`: `LoaderConformanceHarness`, `LoaderVersion`, `SyntheticContainer`, `ResolutionProbe`; a `conformanceTest` source set with the 8 test cases from chapter 32.4; `.github/workflows/conformance.yml` |
+| **Tests** | `NestedUnsatisfiableIsDropped`, `ExactlyOneSelected`, `ProvidesExclusivity`, `BreaksExclusivity`, `JavaDependencyEvaluated`, `EnvironmentEvaluated`, `RuntimeDeduplication`, `ContainerRangeError` — each against loaders 0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.x |
+| **DoD** | All 8 cases × 5 loader versions green; the CI workflow opens an issue automatically on failure; `docs/internals/loader-assumption.md` written |
+| **Depends on** | step 10 |
+| **Effort** | 4 days |
+
+> **This step is a gate.** If it fails, the architecture is refuted and the fallback path (slim JARs as the primary
+> product) must be evaluated before any further steps. That is why it sits **before** the Gradle plugin, not after.
 
 ---
 
-## Meilenstein M5 — Gradle-Plugin (Schritte 12–16)
+## Milestone M5 — the Gradle plugin (steps 12–16)
 
-### Schritt 12 — Plugin-Gerüst, Matrix, DSL
-
-| | |
-|---|---|
-| **Klassen** | `gradle`: `SettingsPlugin`, `CommonPlugin`, `VersionPlugin`, `UniversalPlugin`<br>`gradle.matrix`: `MatrixParser` (eigener TOML-Parser oder `tomlj`; Entscheidung: **`tomlj`**, weil das Plugin auf Java 17 läuft und keine Java-8-Beschränkung hat), `MatrixModel`, `VersionEntry`, `MatrixValueSource`, `MatrixValidator`<br>`gradle.dsl`: alle Extensions und Specs aus Kapitel 21.5 |
-| **Dateien** | `src/main/resources/META-INF/gradle-plugins/*.properties` (4 Plugin-IDs) |
-| **Tests** | `MatrixParserTest` (Pflichtfelder, unbekannte Schlüssel ⇒ `OMNI-1161`, `minecraft ∉ minecraftRange` ⇒ `OMNI-1160`), `SettingsPluginTest` (TestKit: Auto-Include, verwaiste Verzeichnisse ⇒ `OMNI-1163`), `DslDefaultsTest` |
-| **DoD** | Ein Minimalprojekt (1 Payload) synct und zeigt alle erwarteten Tasks; `--configuration-cache` ohne Probleme |
-| **Abhängigkeiten** | M1 (Plugin nutzt `format` direkt) |
-| **Aufwand** | 4 Tage |
-
-### Schritt 13 — Version-Modul-Pipeline
+### Step 12 — plugin scaffold, matrix, DSL
 
 | | |
 |---|---|
-| **Klassen** | `gradle.task`: `MergeAccessWidenerTask`, `MergeResourcesTask` (+ `ResourceMergePlan`, `LangMerger`, `MergeReportWriter`), `GeneratePayloadModJsonTask`, `GeneratePayloadDescriptorTask`, `PayloadJarTask`, `ValidatePayloadTask`<br>`gradle.loom`: `LoomConfigurator` (Loom-API-Aufrufe gekapselt, damit Loom-Updates an einer Stelle nachgezogen werden), `OmniDependencyHandlers` (`omniMod`, `omniOptionalMod`, `omniInclude`, `omniIncludeCommon`) |
-| **Tests** | `AccessWidenerMergeTest` (Golden-File, Dedup, Sortierung, Header-Prüfung), `ResourceMergePlanTest`, `LangMergerTest`, `ModJsonGeneratorTest` (Golden-File der Payload-`fabric.mod.json` aus Kapitel 11.9), `PayloadDescriptorGeneratorTest`, `PayloadJarTaskTest`, TestKit: `SingleVersionBuildTest` |
-| **DoD** | `:versions:mc-1.21.4:omniPayload` erzeugt ein Payload, dessen Struktur exakt Kapitel 10.4 entspricht; `validatePayload` grün; Task ist `UP-TO-DATE`-fähig und cachebar |
-| **Abhängigkeiten** | Schritt 12 |
-| **Aufwand** | 6 Tage |
+| **Classes** | `gradle`: `SettingsPlugin`, `CommonPlugin`, `VersionPlugin`, `UniversalPlugin`<br>`gradle.matrix`: `MatrixParser` (a custom TOML parser or `tomlj`; decision: **`tomlj`**, since the plugin runs on Java 17 and has no Java 8 restriction), `MatrixModel`, `VersionEntry`, `MatrixValueSource`, `MatrixValidator`<br>`gradle.dsl`: all extensions and specs from chapter 21.5 |
+| **Files** | `src/main/resources/META-INF/gradle-plugins/*.properties` (4 plugin IDs) |
+| **Tests** | `MatrixParserTest` (required fields, unknown keys ⇒ `OMNI-1161`, `minecraft ∉ minecraftRange` ⇒ `OMNI-1160`), `SettingsPluginTest` (TestKit: auto-inclusion, orphan directories ⇒ `OMNI-1163`), `DslDefaultsTest` |
+| **DoD** | A minimal project (1 payload) syncs and shows all expected tasks; `--configuration-cache` without problems |
+| **Depends on** | M1 (the plugin uses `format` directly) |
+| **Effort** | 4 days |
 
-### Schritt 14 — Container-Assemblierung
-
-| | |
-|---|---|
-| **Klassen** | `gradle.task`: `GenerateOmniManifestTask`, `GenerateContainerModJsonTask`, `AssembleUniversalJarTask`, `OmniReportTask`, `BuildSlimJarsTask`<br>`gradle.jar`: `DeterministicZipWriter`, `ClassfileScanner`, `ResourceDigest` |
-| **Tests** | `ManifestGeneratorTest` (Golden-File von Kapitel 11.2 aus synthetischen Payloads), `ContainerModJsonGeneratorTest` (Union-Ranges, `depends.java` = Minimum), `DeterministicZipWriterTest` (Reihenfolge, Zeitstempel, STORED für Nested-Jars), `ClassfileScannerTest`, TestKit: `ThreeVersionProjectTest`, `MixedJavaProjectTest` (17/21/25), `ReproducibilityTest`, `SlimJarTest` |
-| **DoD** | `./gradlew buildUniversalJar` erzeugt eine JAR, deren Struktur Kapitel 10.2 entspricht; zwei Builds sind SHA-256-identisch; Slim-Jars sind lauffähige Einzelversionsmods |
-| **Abhängigkeiten** | Schritt 13 |
-| **Aufwand** | 5 Tage |
-
-### Schritt 15 — Validator
+### Step 13 — the version module pipeline
 
 | | |
 |---|---|
-| **Klassen** | `gradle.validate`: `Rule`, `RuleContext`, `RuleSet` (34 Regelimplementierungen als je eine Klasse), `ReferenceScanner` (Konstantenpool-Scan), `ReachabilityAnalyzer` (transitive Referenzen für Regel 26), `MixinConfigChecker`, `AccessWidenerChecker`, `MappingsLookup` (liest Looms Tiny-Mappings für `OMNI-1121`), `ReportFormatter`, `ValidationResult`<br>`gradle.task`: `ValidateUniversalJarTask`, `ValidateExternalJarTask` |
-| **Tests** | Pro Regel ein Positiv- und ein Negativtest (68 Tests) auf synthetischen JARs aus `testing`; `ReportFormatterTest` (Golden-File der Ausgabe aus Kapitel 31.3); `RuleIgnoreTest` (nicht abschaltbare Regeln ⇒ `OMNI-1003`) |
-| **DoD** | Alle 34 Regeln implementiert und beidseitig getestet; Bericht entspricht dem Golden-File; Laufzeit < 3 s für eine 5-MiB-JAR |
-| **Abhängigkeiten** | Schritt 14 |
-| **Aufwand** | 7 Tage |
+| **Classes** | `gradle.task`: `MergeAccessWidenerTask`, `MergeResourcesTask` (+ `ResourceMergePlan`, `LangMerger`, `MergeReportWriter`), `GeneratePayloadModJsonTask`, `GeneratePayloadDescriptorTask`, `PayloadJarTask`, `ValidatePayloadTask`<br>`gradle.loom`: `LoomConfigurator` (Loom API calls encapsulated, so Loom updates are absorbed in one place), `OmniDependencyHandlers` (`omniMod`, `omniOptionalMod`, `omniInclude`, `omniIncludeCommon`) |
+| **Tests** | `AccessWidenerMergeTest` (golden file, dedup, sorting, header check), `ResourceMergePlanTest`, `LangMergerTest`, `ModJsonGeneratorTest` (a golden file of the payload `fabric.mod.json` from chapter 11.9), `PayloadDescriptorGeneratorTest`, `PayloadJarTaskTest`, TestKit: `SingleVersionBuildTest` |
+| **DoD** | `:versions:mc-1.21.4:omniPayload` produces a payload whose structure matches chapter 10.4 exactly; `validatePayload` green; the task is `UP-TO-DATE`-capable and cacheable |
+| **Depends on** | step 12 |
+| **Effort** | 6 days |
 
-### Schritt 16 — Runs, Scaffolding, Integrationstests, Publishing
+### Step 14 — container assembly
 
 | | |
 |---|---|
-| **Klassen** | `gradle.task`: `AddMinecraftVersionTask`, `RemoveMinecraftVersionTask`, `UniversalRunTask`, `ServerBootTestTask`, `ClientSmokeTestTask`, `VerifyReproducibleTask`<br>`gradle.scaffold`: `PackageRenamer` (AST-freies, aber zuverlässiges Umschreiben von `package`/`import`/FQCN über Tokenscan), `TemplateWriter`, `CiMatrixPatcher`<br>`gradle.itest`: `FabricServerInstaller`, `ScenarioRunner`, `LogAssertions`<br>`gradle.publish`: `ModrinthPublisher`, `CurseForgePublisher`, `GithubReleasePublisher`, `GameVersionExpander` (Range → konkrete Versionsliste über die Plattform-APIs)<br>`testing`: `omni-itest-probe` (kleine Fabric-Mod, pro Matrixversion gebaut) |
-| **Tests** | `AddVersionTaskTest` (Matrix, Verzeichnis, Package-Rename, danach grüner Build), `RemoveVersionTaskTest` (Baseline-Anhebung wird gemeldet), `PackageRenamerTest` (30 Fälle inkl. Strings, Kommentare, `package-info`), `GameVersionExpanderTest` (gegen aufgezeichnete API-Antworten), `ScenarioRunnerTest`, echte Integrationstests der Beispielmod |
-| **DoD** | Die 7 Szenarien aus Kapitel 32.5 laufen lokal und in CI; `addMinecraftVersion` erzeugt ein sofort baubares Modul; `publishUniversal --dry-run` zeigt korrekte `game_versions` |
-| **Abhängigkeiten** | Schritt 15 |
-| **Aufwand** | 8 Tage |
+| **Classes** | `gradle.task`: `GenerateOmniManifestTask`, `GenerateContainerModJsonTask`, `AssembleUniversalJarTask`, `OmniReportTask`, `BuildSlimJarsTask`<br>`gradle.jar`: `DeterministicZipWriter`, `ClassfileScanner`, `ResourceDigest` |
+| **Tests** | `ManifestGeneratorTest` (the golden file of chapter 11.2 from synthetic payloads), `ContainerModJsonGeneratorTest` (union ranges, `depends.java` = minimum), `DeterministicZipWriterTest` (ordering, timestamps, STORED for nested JARs), `ClassfileScannerTest`, TestKit: `ThreeVersionProjectTest`, `MixedJavaProjectTest` (17/21/25), `ReproducibilityTest`, `SlimJarTest` |
+| **DoD** | `./gradlew buildUniversalJar` produces a JAR whose structure matches chapter 10.2; two builds are SHA-256-identical; slim JARs are runnable single-version mods |
+| **Depends on** | step 13 |
+| **Effort** | 5 days |
+
+### Step 15 — the validator
+
+| | |
+|---|---|
+| **Classes** | `gradle.validate`: `Rule`, `RuleContext`, `RuleSet` (34 rule implementations, one class each), `ReferenceScanner` (constant pool scan), `ReachabilityAnalyzer` (transitive references for rule 26), `MixinConfigChecker`, `AccessWidenerChecker`, `MappingsLookup` (reads Loom's tiny mappings for `OMNI-1121`), `ReportFormatter`, `ValidationResult`<br>`gradle.task`: `ValidateUniversalJarTask`, `ValidateExternalJarTask` |
+| **Tests** | One positive and one negative test per rule (68 tests) against synthetic JARs from `testing`; `ReportFormatterTest` (a golden file of the output from chapter 31.3); `RuleIgnoreTest` (non-disableable rules ⇒ `OMNI-1003`) |
+| **DoD** | All 34 rules implemented and tested from both sides; the report matches the golden file; runtime < 3 s for a 5 MiB JAR |
+| **Depends on** | step 14 |
+| **Effort** | 7 days |
+
+### Step 16 — runs, scaffolding, integration tests, publishing
+
+| | |
+|---|---|
+| **Classes** | `gradle.task`: `AddMinecraftVersionTask`, `RemoveMinecraftVersionTask`, `UniversalRunTask`, `ServerBootTestTask`, `ClientSmokeTestTask`, `VerifyReproducibleTask`<br>`gradle.scaffold`: `PackageRenamer` (AST-free but reliable rewriting of `package`/`import`/FQCNs via a token scan), `TemplateWriter`, `CiMatrixPatcher`<br>`gradle.itest`: `FabricServerInstaller`, `ScenarioRunner`, `LogAssertions`<br>`gradle.publish`: `ModrinthPublisher`, `CurseForgePublisher`, `GithubReleasePublisher`, `GameVersionExpander` (range → a concrete version list via the platform APIs)<br>`testing`: `omni-itest-probe` (a small Fabric mod, built per matrix version) |
+| **Tests** | `AddVersionTaskTest` (matrix, directory, package rename, then a green build), `RemoveVersionTaskTest` (the baseline increase is reported), `PackageRenamerTest` (30 cases including strings, comments, `package-info`), `GameVersionExpanderTest` (against recorded API responses), `ScenarioRunnerTest`, plus the real integration tests of the example mod |
+| **DoD** | The 7 scenarios from chapter 32.5 run locally and in CI; `addMinecraftVersion` produces an immediately buildable module; `publishUniversal --dry-run` shows the correct `game_versions` |
+| **Depends on** | step 15 |
+| **Effort** | 8 days |
 
 ---
 
-## Meilenstein M6 — Beispielmod und Beweisführung (Schritte 17–18)
+## Milestone M6 — the example mod and the proof (steps 17–18)
 
-### Schritt 17 — `UniversalExampleMod` mit einem Payload
-
-| | |
-|---|---|
-| **Dateien** | Vollständige Struktur aus Kapitel 35.2, zunächst nur `versions/mc-1.21.4`: `Platform1214(+Factory)`, `Registries1214`, `Networking1214` (+`ByteSink/Source1214`, `ClientNet1214`), `PlayerRef1214`, `OreGenService1214`, `HudRenderService1214`, Mixins, Datagen; `common`: `ExampleMod`, `ExampleModClient`, `RubyLogic`, `RubyBehavior`, `RubyContent`, `ExampleNetworking`, `ExampleCommands`, `ExampleEvents`, `ExampleConfig`, `api/ExampleModApi`, Ressourcen, Icon |
-| **Tests** | `RubyLogicTest`, `ExampleModInitTest` (FakeModContext), `ExampleConfigTest`; `runClient1214` und `runServer1214` manuell verifiziert; `integrationTestMc1214` automatisiert |
-| **DoD** | Item, Block, Command, Networking (beide Richtungen), Events und ein Mixin funktionieren im echten Spiel; Universal-JAR mit einem Payload validiert; Integrationstest grün |
-| **Abhängigkeiten** | M5 |
-| **Aufwand** | 5 Tage |
-
-### Schritt 18 — Zweite und dritte Version, volle Matrix
+### Step 17 — `UniversalExampleMod` with one payload
 
 | | |
 |---|---|
-| **Dateien** | `versions/mc-1.21.1` und `versions/mc-1.20.1` (über `addMinecraftVersion --copy-from=mc1214` erzeugt, dann angepasst); versionsspezifische Ressource (`models/item/ruby.json` für 1.20.1); `shared.accesswidener` + payloadspezifische AW; `allowOverride`-Deklaration |
-| **Tests** | Integrationstests mc1201/mc1211/mc1214 + `unsupported`, `oldFabricApi`, `wrongJava`, `lenient`; Client-Smoke mc1201 + mc1214 |
-| **DoD** | **Die zentrale Abnahme:** *Eine* Datei `universal-example-mod-1.0.0-universal.jar` startet auf 1.20.1/Java 17, 1.21.1/Java 21 und 1.21.4/Java 21, aktiviert jeweils das richtige Payload (im Log nachgewiesen), und liefert auf 1.19.2 die Meldung aus Kapitel 29.2 ohne `NoClassDefFoundError` |
-| **Abhängigkeiten** | Schritt 17 |
-| **Aufwand** | 6 Tage |
+| **Files** | The complete structure from chapter 35.2, initially only `versions/mc-1.21.4`: `Platform1214(+Factory)`, `Registries1214`, `Networking1214` (+`ByteSink/Source1214`, `ClientNet1214`), `PlayerRef1214`, `OreGenService1214`, `HudRenderService1214`, mixins, datagen; `common`: `ExampleMod`, `ExampleModClient`, `RubyLogic`, `RubyBehavior`, `RubyContent`, `ExampleNetworking`, `ExampleCommands`, `ExampleEvents`, `ExampleConfig`, `api/ExampleModApi`, resources, icon |
+| **Tests** | `RubyLogicTest`, `ExampleModInitTest` (FakeModContext), `ExampleConfigTest`; `runClient1214` and `runServer1214` verified manually; `integrationTestMc1214` automated |
+| **DoD** | Item, block, command, networking (both directions), events and one mixin work in the real game; the universal JAR with one payload validates; the integration test is green |
+| **Depends on** | M5 |
+| **Effort** | 5 days |
+
+### Step 18 — the second and third versions, the full matrix
+
+| | |
+|---|---|
+| **Files** | `versions/mc-1.21.1` and `versions/mc-1.20.1` (created with `addMinecraftVersion --copy-from=mc1214`, then adjusted); a version-specific resource (`models/item/ruby.json` for 1.20.1); `shared.accesswidener` + payload-specific AWs; the `allowOverride` declaration |
+| **Tests** | Integration tests mc1201/mc1211/mc1214 plus `unsupported`, `oldFabricApi`, `wrongJava`, `lenient`; client smoke tests mc1201 and mc1214 |
+| **DoD** | **The central acceptance criterion:** *one* file `universal-example-mod-1.0.0-universal.jar` starts on 1.20.1/Java 17, 1.21.1/Java 21 and 1.21.4/Java 21, activates the correct payload in each case (evidenced in the log), and on 1.19.2 produces the message from chapter 29.2 without a `NoClassDefFoundError` |
+| **Depends on** | step 17 |
+| **Effort** | 6 days |
 
 ---
 
-## Meilenstein M7 — Auslieferung (Schritte 19–21)
+## Milestone M7 — shipping (steps 19–21)
 
-### Schritt 19 — Dokumentation
-
-| | |
-|---|---|
-| **Dateien** | Alle 33 Seiten aus Kapitel 38.1 inklusive `internals/` und `adr/`; `mkdocs.yml`; `docs-snippets`-Sourceset mit allen Java-Beispielen der Doku; `.github/workflows/docs.yml` |
-| **Tests** | `ErrorCodeDocumentationTest`, `docs-snippets:compileJava`, Linkcheck (`lychee`), `AdrIndexTest` (jede in ADRs referenzierte Entscheidung existiert) |
-| **DoD** | Site baut und deployt; jeder Fehlercode hat einen Anker; alle Doku-Codebeispiele kompilieren gegen die veröffentlichte API |
-| **Abhängigkeiten** | M6 |
-| **Aufwand** | 6 Tage |
-
-### Schritt 20 — Template-Repository
+### Step 19 — documentation
 
 | | |
 |---|---|
-| **Dateien** | `fabricmultiloader-template`: Wrapper, `settings.gradle.kts`, `build.gradle.kts`, `gradle/fabricmultiloader.toml` (3 Versionen), `gradle/libs.versions.toml`, `common` (ein Item, ein Command, ein Event, ein Test), `versions/mc-*` (drei Adapter, je ein Mixin), `.github/workflows/build.yml`, `README.md` (Ausfüllanleitung), `LICENSE`-Platzhalter, `.gitignore`, `renovate.json` (Matrix-Updates), `bootstrap.sh`/`bootstrap.ps1` (fragt Mod-ID/Name/Package ab und benennt alles um) |
-| **Tests** | CI-Job `template-smoke`: klont das Template, führt `bootstrap` mit Testwerten aus, baut, validiert und bootet einen Server |
-| **DoD** | `git clone` → `./bootstrap.sh` → `./gradlew buildUniversalJar` in < 10 Minuten auf einem frischen Rechner; GitHub-„Use this template“ funktioniert |
-| **Abhängigkeiten** | Schritt 19 |
-| **Aufwand** | 3 Tage |
+| **Files** | All 33 pages from chapter 38.1 including `internals/` and `adr/`; `mkdocs.yml`; the `docs-snippets` source set with all Java examples from the docs; `.github/workflows/docs.yml` |
+| **Tests** | `ErrorCodeDocumentationTest`, `docs-snippets:compileJava`, a link check (`lychee`), `AdrIndexTest` (every decision referenced in the ADRs exists) |
+| **DoD** | The site builds and deploys; every error code has an anchor; all documentation code examples compile against the published API |
+| **Depends on** | M6 |
+| **Effort** | 6 days |
 
-### Schritt 21 — Release 1.0.0
+### Step 20 — the template repository
 
 | | |
 |---|---|
-| **Dateien** | `release.yml`, `japicmp`-Baselines, `CHANGELOG.md` 1.0.0, Maven-Repository-Setup (`maven.fabricmultiloader.dev` oder Maven Central), Gradle-Plugin-Portal-Eintrag |
-| **Tests** | Vollständige Release-Pipeline im Dry-Run; `conformance.yml` grün; Installationstest der veröffentlichten Artefakte in einem frischen Projekt (nicht aus dem Composite-Build) |
-| **DoD** | Artefakte öffentlich auflösbar; Template referenziert nur veröffentlichte Versionen; Beispielmod auf Modrinth (Testprojekt) als **eine** Datei mit vier Game-Version-Tags |
-| **Abhängigkeiten** | Schritt 20 |
-| **Aufwand** | 2 Tage |
+| **Files** | `fabricmultiloader-template`: the wrapper, `settings.gradle.kts`, `build.gradle.kts`, `gradle/fabricmultiloader.toml` (3 versions), `gradle/libs.versions.toml`, `common` (one item, one command, one event, one test), `versions/mc-*` (three adapters, one mixin each), `.github/workflows/build.yml`, `README.md` (a fill-in guide), a `LICENSE` placeholder, `.gitignore`, `renovate.json` (matrix updates), `bootstrap.sh`/`bootstrap.ps1` (asks for the mod ID/name/package and renames everything) |
+| **Tests** | A CI job `template-smoke`: clone the template, run `bootstrap` with test values, build, validate and boot a server |
+| **DoD** | `git clone` → `./bootstrap.sh` → `./gradlew buildUniversalJar` in under 10 minutes on a fresh machine; GitHub's “Use this template” works |
+| **Depends on** | step 19 |
+| **Effort** | 3 days |
+
+### Step 21 — release 1.0.0
+
+| | |
+|---|---|
+| **Files** | `release.yml`, `japicmp` baselines, `CHANGELOG.md` for 1.0.0, the Maven repository setup (`maven.fabricmultiloader.dev` or Maven Central), the Gradle Plugin Portal entry |
+| **Tests** | The full release pipeline as a dry run; `conformance.yml` green; an installation test of the published artifacts in a fresh project (not from the composite build) |
+| **DoD** | Artifacts publicly resolvable; the template references only published versions; the example mod on Modrinth (a test project) as **one** file with four game version tags |
+| **Depends on** | step 20 |
+| **Effort** | 2 days |
 
 ---
 
-## Zusammenfassung und kritischer Pfad
+## Summary and critical path
 
-| Meilenstein | Schritte | Aufwand |
+| Milestone | Steps | Effort |
 |---|---|---|
-| M0 Gerüst | 1 | 1 Tag |
-| M1 `format` | 2–5 | 11 Tage |
-| M2 `api` | 6 | 4 Tage |
-| M3 `runtime` | 7–9 | 12 Tage |
-| M4 `testing` + Conformance-**Gate** | 10–11 | 7 Tage |
-| M5 Gradle-Plugin | 12–16 | 30 Tage |
-| M6 Beispielmod + Abnahme | 17–18 | 11 Tage |
-| M7 Doku, Template, Release | 19–21 | 11 Tage |
-| **Summe** | | **≈ 87 Personentage** (≈ 4,5 Monate bei einer Person mit 50 % Verfügbarkeit) |
+| M0 scaffold | 1 | 1 day |
+| M1 `format` | 2–5 | 11 days |
+| M2 `api` | 6 | 4 days |
+| M3 `runtime` | 7–9 | 12 days |
+| M4 `testing` + the conformance **gate** | 10–11 | 7 days |
+| M5 Gradle plugin | 12–16 | 30 days |
+| M6 example mod + acceptance | 17–18 | 11 days |
+| M7 docs, template, release | 19–21 | 11 days |
+| **Total** | | **≈ 87 person-days** (≈ 4.5 months for one person at 50 % availability) |
 
-**Kritischer Pfad:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 10 → **11 (Gate)** → 12 → 13 → 14 → 15 → 17 → 18 → 19 → 21.
+**Critical path:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 10 → **11 (gate)** → 12 → 13 → 14 → 15 → 17 → 18 → 19 → 21.
 
-**Parallelisierbar:** Schritt 6 (`api`) und Schritt 9 (`runtime`-Adapter) können neben M1-Restarbeiten laufen;
-Schritt 15 (Validator, 34 unabhängige Regeln) und Schritt 19 (Doku) sind gut auf mehrere Beitragende
-verteilbar.
+**Parallelisable:** step 6 (`api`) and step 9 (the `runtime` adapters) can run alongside the remaining M1 work;
+step 15 (the validator, 34 independent rules) and step 19 (documentation) distribute well across several
+contributors.
 
-**Frühester nutzbarer Zwischenstand:** Nach Schritt 14 existiert eine baubare Universal-JAR; nach Schritt 18
-ist die Kernbehauptung des Projekts bewiesen. Ein Alpha-Release ist nach Schritt 18 sinnvoll, ein Beta nach
-Schritt 19.
+**Earliest usable intermediate state:** after step 14 a buildable universal JAR exists; after step 18 the project's
+core claim is proven. An alpha release makes sense after step 18, a beta after step 19.
 
-**Reihenfolge-Begründung an den zwei nichtoffensichtlichen Stellen:**
+**Ordering rationale at the two non-obvious points:**
 
-1. **`format` vor allem anderen**, weil Runtime und Gradle-Plugin denselben Code benutzen — nur so können
-   Build-Zeit- und Laufzeitentscheidungen nicht divergieren. Würde man mit dem Plugin beginnen, entstünde
-   zwangsläufig eine zweite, abweichende Implementierung der Versionsalgebra.
-2. **Conformance-Gate (11) vor dem Gradle-Plugin (12–16)**, weil die tragende Annahme dort mit ~7 Tagen Aufwand
-   verifizierbar ist, während ihre Widerlegung nach 30 Tagen Plugin-Arbeit die gesamte Verpackungsstrategie
-   umwerfen würde.
+1. **`format` before everything else**, because the runtime and the Gradle plugin use the same code — that is the
+   only way build-time and runtime decisions cannot diverge. Starting with the plugin would inevitably produce a
+   second, deviating implementation of the version algebra.
+2. **The conformance gate (11) before the Gradle plugin (12–16)**, because the load-bearing assumption is verifiable
+   there for roughly 7 days of effort, whereas refuting it after 30 days of plugin work would overturn the entire
+   packaging strategy.
 
 ---
 
-Weiter mit [Antworten auf die 25 harten technischen Fragen](part-13-hard-questions.md).
+Continue with [the answers to the 25 hard technical questions](part-13-hard-questions.md).

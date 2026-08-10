@@ -1,440 +1,429 @@
-# 5. Fabric/JVM-Machbarkeitsanalyse
+# 5. Fabric/JVM Feasibility Analysis
 
-Dieses Kapitel legt die technischen Rahmenbedingungen offen, aus denen die Architektur zwingend folgt. Alle
-Aussagen beziehen sich auf Fabric Loader 0.14.0 – 0.17.x (Stand 2026-08) und Sponge Mixin 0.8.5 – 0.8.7 in der
-Fabric-Variante. Jede Aussage, die architektonisch tragend ist, ist mit **[T]** markiert und in
-[Kapitel 32](part-08-quality.md) durch einen Conformance-Test abgesichert.
+This chapter lays out the technical constraints from which the architecture follows necessarily. All statements
+refer to Fabric Loader 0.14.0 – 0.17.x (as of 2026-08) and Sponge Mixin 0.8.5 – 0.8.7 in its Fabric variant. Every
+statement that is architecturally load-bearing is marked **[LB]** and guarded by a conformance test in
+[chapter 32](part-08-quality.md).
 
 ---
 
-## 5.1 Startsequenz des Fabric Loaders — die entscheidende Zeitachse
+## 5.1 Fabric Loader's start sequence — the decisive timeline
 
-Die Reihenfolge der Ladephasen bestimmt, welche Freiheitsgrade FabricMultiLoader überhaupt hat. Sie ist:
+The order of load phases determines which degrees of freedom FabricMultiLoader has at all. It is:
 
 ```
-1.  JVM startet net.fabricmc.loader.impl.launch.knot.KnotClient/KnotServer   (System-ClassLoader)
+1.  JVM starts net.fabricmc.loader.impl.launch.knot.KnotClient/KnotServer   (system ClassLoader)
 2.  Knot#init
-    2.1  GameProvider-Erkennung (Minecraft-JAR finden, MC-Version bestimmen)
-    2.2  KnotClassLoader wird erzeugt (+ KnotClassDelegate, Transformer-Kette)
+    2.1  GameProvider detection (locate the Minecraft JAR, determine the MC version)
+    2.2  KnotClassLoader is created (+ KnotClassDelegate, transformer chain)
     2.3  FabricLoaderImpl#setup
-         a) ModDiscoverer: Verzeichnis mods/ scannen
-            - jede *.jar öffnen, NUR fabric.mod.json lesen  (kein Bytecode!)
-            - "jars"-Array auswerten -> genestete Kandidaten rekursiv,
-              erneut NUR deren fabric.mod.json lesen
-         b) Built-in-Kandidaten registrieren: minecraft, java, fabricloader
-         c) ModResolver/ModSolver: SAT-Lösung über alle Kandidaten
-            - Root-Kandidaten (Dateien in mods/) = MANDATORY
-            - genestete Kandidaten            = OPTIONAL
-            - depends/breaks/conflicts/provides -> harte Klauseln
-         d) ausgewählte genestete Kandidaten werden nach
-            <gameDir>/.fabric/processedMods/ extrahiert (hash-benannt)
-         e) (nur Dev) RuntimeModRemapper: intermediary -> named
-         f) alle ausgewählten Mod-JARs werden dem KnotClassLoader als
-            Classpath-Einträge hinzugefügt
-         g) Access Widener aller ausgewählten Mods werden eingelesen und zu
-            EINEM AccessWidener zusammengeführt -> AccessWidenerClassTransformer
+         a) ModDiscoverer: scan the mods/ directory
+            - open every *.jar, read ONLY fabric.mod.json  (no bytecode!)
+            - evaluate the "jars" array -> nested candidates, recursively,
+              again reading ONLY their fabric.mod.json
+         b) register built-in candidates: minecraft, java, fabricloader
+         c) ModResolver/ModSolver: SAT solution across all candidates
+            - root candidates (files in mods/) = MANDATORY
+            - nested candidates               = OPTIONAL
+            - depends/breaks/conflicts/provides -> hard clauses
+         d) selected nested candidates are extracted into
+            <gameDir>/.fabric/processedMods/ (hash-named)
+         e) (dev only) RuntimeModRemapper: intermediary -> named
+         f) all selected mod JARs are added to the KnotClassLoader as
+            classpath entries
+         g) access wideners of all selected mods are read and merged into
+            ONE AccessWidener -> AccessWidenerClassTransformer
     2.4  FabricMixinBootstrap#init
          - MixinBootstrap.init()
-         - Mixins.addConfiguration(cfg) für JEDE "mixins"-Deklaration
-           JEDER ausgewählten Mod
-         - MixinIntermediaryDevRemapper (nur Dev)
+         - Mixins.addConfiguration(cfg) for EVERY "mixins" declaration
+           of EVERY selected mod
+         - MixinIntermediaryDevRemapper (dev only)
     2.5  EntrypointUtils.invoke("preLaunch", PreLaunchEntrypoint)
-         -> HIER läuft FabricMultiLoader zum ersten Mal eigener Code
-3.  Knot lädt die Minecraft-Hauptklasse über den KnotClassLoader
-    -> ab jetzt greifen Mixin-Transformation + Access Widener bei jedem Class-Load
-4.  Minecraft-Bootstrap; irgendwann:
+         -> THIS is where FabricMultiLoader runs its own code for the first time
+3.  Knot loads the Minecraft main class through the KnotClassLoader
+    -> from now on mixin transformation + access wideners apply on every class load
+4.  Minecraft bootstrap; at some point:
     EntrypointUtils.invoke("main"/"client"/"server", ModInitializer...)
-5.  Spielstart
+5.  Game start
 ```
 
-**Die vier architektonisch entscheidenden Beobachtungen:**
+**The four architecturally decisive observations:**
 
-1. **[T] In Phase 2.3a wird ausschließlich `fabric.mod.json` gelesen — kein Class-File.** Der `ModDiscoverer`
-   öffnet die JAR als ZIP (in neueren Loadern über ein `ZipFileSystem`), liest den einen JSON-Eintrag, berechnet
-   optional einen Hash über die Datei und schließt sie wieder. Es findet keinerlei Bytecode-Inspektion, kein
-   ASM-Parsing, keine Annotation-Suche und keine Classfile-Versionsprüfung statt. **Daraus folgt: Payloads mit
-   Java-21-Bytecode können in einer JAR liegen, die auf einer Java-17-JVM verarbeitet wird, solange sie nicht
-   ausgewählt werden.** Das ist die Antwort auf die gesamte „Classfile-Version“-Problemfamilie.
-2. **[T] Genestete Kandidaten sind für den Solver optional.** Root-Mods (Dateien direkt in `mods/`) sind
-   verpflichtend zu laden; scheitert deren Auflösung, bricht der Loader mit einer Fehlermeldung ab. Genestete
-   Mods sind hingegen als optionale Variablen modelliert: Der Solver maximiert die Anzahl geladener Mods, aber
-   harte Klauseln (`depends`, `breaks`, „höchstens ein Kandidat pro Mod-ID“) dominieren. Ein genestetes Mod mit
-   unerfüllbarem `depends`, auf das kein *geladenes* Mod hart angewiesen ist, wird einfach nicht ausgewählt.
-   Genau deshalb funktionieren im Ökosystem JiJ-Bibliotheken, die `depends: { minecraft: "1.20.x" }` deklarieren.
-3. **Mixin-Configs werden pro *ausgewählter* Mod registriert (2.4), also nach der Auflösung.** Eine
-   Mixin-Config eines nicht ausgewählten Payloads wird nie an `Mixins.addConfiguration` übergeben. Sponge Mixin
-   liest die Mixin-Klassen einer Config erst beim ersten `select`/`prepare`-Durchlauf; nicht registrierte Configs
-   existieren für Mixin nicht.
-4. **Access Widener werden pro ausgewählter Mod eingelesen und *zusammengeführt* (2.3g).** Ein Mod deklariert
-   genau *einen* AW-Pfad (`"accessWidener": "…"`). Mehrere Mods bringen mehrere AW-Dateien; alle werden in einen
-   gemeinsamen `AccessWidener` gemergt. Das heißt: **Pro Mod eine Datei — aber unser Payload *ist* eine eigene
-   Mod.** Damit ist das AW-Problem strukturell gelöst, ohne eigene Transformer.
+1. **[LB] In phase 2.3a only `fabric.mod.json` is read — no class file.** `ModDiscoverer` opens the JAR as a ZIP
+   (via a `ZipFileSystem` in newer loaders), reads that single JSON entry, optionally hashes the file and closes it
+   again. There is no bytecode inspection, no ASM parsing, no annotation scan and no class file version check.
+   **Consequently: payloads with Java 21 bytecode can live inside a JAR that is being processed on a Java 17 JVM,
+   as long as they are not selected.** That is the answer to the entire “class file version” problem family.
+2. **[LB] Nested candidates are optional to the solver.** Root mods (files directly in `mods/`) must be loaded;
+   if their resolution fails, the loader aborts with an error message. Nested mods, in contrast, are modelled as
+   optional variables: the solver maximises the number of loaded mods, but hard clauses (`depends`, `breaks`,
+   “at most one candidate per mod ID”) dominate. A nested mod with unsatisfiable `depends`, which no *loaded* mod
+   hard-depends on, is simply not selected. This is exactly why JiJ libraries declaring
+   `depends: { minecraft: "1.20.x" }` work throughout the ecosystem.
+3. **Mixin configs are registered per *selected* mod (2.4), i.e. after resolution.** A mixin config belonging to
+   a non-selected payload is never passed to `Mixins.addConfiguration`. Sponge Mixin reads the mixin classes of a
+   config only on the first `select`/`prepare` pass; configs that were never registered do not exist for Mixin.
+4. **Access wideners are read per selected mod and *merged* (2.3g).** A mod declares exactly *one* AW path
+   (`"accessWidener": "…"`). Several mods contribute several AW files; all of them are merged into one shared
+   `AccessWidener`. Meaning: **one file per mod — but our payload *is* its own mod.** The AW problem is therefore
+   structurally solved without custom transformers.
 
 ---
 
-## 5.2 Fabric Loader im Detail
+## 5.2 Fabric Loader in detail
 
-### 5.2.1 Mod Discovery
+### 5.2.1 Mod discovery
 
-* Gescannt werden: `<gameDir>/mods/*.jar`, `<gameDir>/mods/<mcVersion>/*.jar` (versionierte Unterordner,
-  Loader ≥ 0.15), Classpath-Einträge mit `fabric.mod.json` (Dev), sowie rekursiv alle in `jars[]` deklarierten
-  Pfade innerhalb bereits gefundener JARs.
-* Ein Kandidat ohne parsbares `fabric.mod.json` führt zu einem harten Fehler mit Dateinamen (gut für uns:
-  Beschädigte Container werden früh und mit Dateibezug gemeldet).
-* Für die Deduplizierung genesteter Bibliotheken gilt: Bei mehreren Kandidaten derselben Mod-ID gewinnt die
-  höchste Version, die alle Constraints erfüllt. **Das ist der Mechanismus, über den `fabricmultiloader-runtime`
-  aus vielen Universal-JARs auf genau eine Instanz dedupliziert wird.**
-* Die Extraktion ausgewählter genesteter JARs erfolgt nach `<gameDir>/.fabric/processedMods/`, mit
-  hash-/namensbasiertem Cache. Beim zweiten Start entfällt die Extraktion, wenn Hash und Größe passen.
-  FabricMultiLoader implementiert **keinen eigenen Cache** und keine eigene Extraktion (NF-04).
+* Scanned: `<gameDir>/mods/*.jar`, `<gameDir>/mods/<mcVersion>/*.jar` (versioned subfolders, loader ≥ 0.15),
+  classpath entries containing a `fabric.mod.json` (dev), plus recursively every path declared in `jars[]` inside
+  already-found JARs.
+* A candidate without a parseable `fabric.mod.json` causes a hard failure naming the file (good for us: corrupted
+  containers are reported early and with a file reference).
+* For deduplication of nested libraries: among several candidates of the same mod ID, the highest version that
+  satisfies all constraints wins. **This is the mechanism that reduces `fabricmultiloader-runtime` from many
+  universal JARs down to exactly one instance.**
+* Extraction of selected nested JARs goes to `<gameDir>/.fabric/processedMods/`, with a hash/name-based cache. On
+  the second launch, extraction is skipped when hash and size match. FabricMultiLoader implements **no cache of
+  its own** and no extraction (NF-04).
 
-### 5.2.2 `fabric.mod.json` — relevante Felder und ihre Semantik
+### 5.2.2 `fabric.mod.json` — relevant fields and their semantics
 
-| Feld | Relevanz für FabricMultiLoader |
+| Field | Relevance to FabricMultiLoader |
 |---|---|
-| `schemaVersion` | Immer `1`. Vom Generator geschrieben. |
-| `id` | `^[a-z][a-z0-9-_]{1,63}$`. Container = primäre Mod-ID; Payloads = `<id>-mc<compact>`. |
-| `version` | Container = Modversion. Payload = `<modVersion>+mc<mcVersion>` (Build-Metadata nach `+` ist für SemVer-Vergleiche irrelevant, aber in Logs/ModMenu sichtbar). |
-| `provides` | Alias-IDs. Zwei geladene Mods dürfen **nicht** dieselbe ID bereitstellen ⇒ nutzbar als „höchstens ein Payload“-Garantie. |
-| `environment` | `*`/`client`/`server`. Wird vom Loader **vor** dem Classloading ausgewertet: ein `client`-Mod wird auf einem dedizierten Server gar nicht geladen. Für Client-only-Payloads verwendbar. |
-| `entrypoints` | Map von Phase → Liste von Klassennamen (optional mit `adapter`). Klassen dürfen in **einer anderen Mod** liegen — alle Mod-Klassen teilen einen ClassLoader. |
-| `jars` | `[{"file": "META-INF/jars/x.jar"}]`. Rekursiv. Kernmechanismus dieser Architektur. |
-| `mixins` | Liste von Config-Dateinamen oder Objekten `{config, environment}`. Pro Mod. Wird in 2.4 registriert. |
-| `accessWidener` | Genau ein Pfad pro Mod. |
-| `depends` | Map ID → Version-Predicate **oder Array von Predicates (OR-Semantik)**. Eingebaute IDs: `minecraft`, `java` (Version = Java-Major, z. B. `17.0.0`), `fabricloader`. |
-| `breaks` / `conflicts` | Harte bzw. weiche Negativbeziehung. `breaks` = SAT-Klausel „nicht beide“. |
-| `recommends` / `suggests` | Nur Log-Hinweise, keine Klauseln. |
-| `custom` | Beliebige Objekte; `custom.modmenu.parent`, `custom.modmenu.badges` werden von ModMenu ausgewertet. |
+| `schemaVersion` | Always `1`. Written by the generator. |
+| `id` | `^[a-z][a-z0-9-_]{1,63}$`. Container = primary mod ID; payloads = `<id>-mc<compact>`. |
+| `version` | Container = mod version. Payload = `<modVersion>+mc<mcVersion>` (build metadata after `+` is irrelevant to SemVer comparison but visible in logs/ModMenu). |
+| `provides` | Alias IDs. Two loaded mods must **not** provide the same ID ⇒ usable as an “at most one payload” guarantee. |
+| `environment` | `*`/`client`/`server`. Evaluated by the loader **before** classloading: a `client` mod is not loaded at all on a dedicated server. Usable for client-only payloads. |
+| `entrypoints` | Map of phase → list of class names (optionally with `adapter`). Classes may live **in another mod** — all mod classes share one ClassLoader. |
+| `jars` | `[{"file": "META-INF/jars/x.jar"}]`. Recursive. The core mechanism of this architecture. |
+| `mixins` | List of config file names or objects `{config, environment}`. Per mod. Registered in 2.4. |
+| `accessWidener` | Exactly one path per mod. |
+| `depends` | Map ID → version predicate **or array of predicates (OR semantics)**. Built-in IDs: `minecraft`, `java` (version = Java major, e.g. `17.0.0`), `fabricloader`. |
+| `breaks` / `conflicts` | Hard resp. soft negative relation. `breaks` = SAT clause “not both”. |
+| `recommends` / `suggests` | Log hints only, no clauses. |
+| `custom` | Arbitrary objects; `custom.modmenu.parent`, `custom.modmenu.badges` are evaluated by ModMenu. |
 
-**Version-Predicate-Syntax** (Loader `VersionPredicateParser`): `*`, `1.20.1`, `=1.20.1`, `>=1.20.1`,
-`>1.20`, `<=1.21.4`, `<1.22`, `~1.20.1` (≥1.20.1 <1.21.0), `^1.20.1` (≥1.20.1 <2.0.0), Kombination mehrerer
-Bedingungen durch Leerzeichen (AND: `">=1.21 <1.21.2"`), Alternativen durch Array (OR).
-FabricMultiLoader nutzt ausschließlich `>=`/`<`/`=` und Arrays — die Teilmenge, die in allen Loader-Versionen
-0.14+ identische Semantik hat, und die von der eigenen Implementierung in `fabricmultiloader-format`
-bitgenau nachgebildet wird (Kapitel 12).
+**Version predicate syntax** (loader `VersionPredicateParser`): `*`, `1.20.1`, `=1.20.1`, `>=1.20.1`, `>1.20`,
+`<=1.21.4`, `<1.22`, `~1.20.1` (≥1.20.1 <1.21.0), `^1.20.1` (≥1.20.1 <2.0.0), several conditions combined by
+spaces (AND: `">=1.21 <1.21.2"`), alternatives via an array (OR).
+FabricMultiLoader uses exclusively `>=`/`<`/`=` and arrays — the subset whose semantics are identical across all
+loader versions 0.14+, and which is reproduced bit-exactly by its own implementation in
+`fabricmultiloader-format` (chapter 12).
 
-### 5.2.3 Der Solver
+### 5.2.3 The solver
 
-Der `ModSolver` baut ein Boolesches Erfüllbarkeitsproblem (Sat4j) mit einer Variable pro Kandidat:
+`ModSolver` builds a boolean satisfiability problem (Sat4j) with one variable per candidate:
 
-* **Mandatory-Klausel** je Root-Mod-ID: mindestens ein Kandidat dieser ID muss `true` sein.
-* **At-most-one-Klausel** je Mod-ID *und* je bereitgestellter Alias-ID (`provides`).
-* **Depends-Klausel** je Kandidat: `candidate → OR(passende Kandidaten der Ziel-ID)`.
-* **Breaks/Conflicts-Klausel**: `¬(a ∧ b)`.
-* **Optimierungsziel**: möglichst viele und möglichst neue Mods laden.
+* **Mandatory clause** per root mod ID: at least one candidate of that ID must be `true`.
+* **At-most-one clause** per mod ID *and* per provided alias ID (`provides`).
+* **Depends clause** per candidate: `candidate → OR(matching candidates of the target ID)`.
+* **Breaks/conflicts clause**: `¬(a ∧ b)`.
+* **Optimisation objective**: load as many and as new mods as possible.
 
-Konsequenzen für uns:
+Consequences for us:
 
-1. Zwei Payloads mit derselben `provides`-Alias-ID können **nie** gleichzeitig geladen werden — strukturelle
-   Exklusivität ohne eigene Logik.
-2. Das Optimierungsziel („möglichst viele/neue“) ist **kein deterministischer Prioritätsmechanismus**, auf den
-   man Payload-Auswahl stützen darf: Bei zwei gleichzeitig erfüllbaren Payloads ist nicht spezifiziert, welcher
-   gewinnt. **Deshalb muss die Disjunktheit der Payload-Constraints zur *Build-Zeit* bewiesen werden**
-   (Kapitel 12.6, Validator-Regel `OMNI-1010`/`OMNI-1012`). Der `priority`-Mechanismus des Frameworks wird
-   deshalb nicht zur Laufzeit ausgewertet, sondern zur Build-Zeit in *disjunkte* Bereiche umgerechnet
-   (Range-Subtraktion, Kapitel 12.7).
-3. Unerfüllbarkeit eines *Root*-Mods erzeugt eine ausführliche, lokalisierte Loader-Fehlermeldung mit
-   Fabric-GUI-Dialog. Das nutzen wir für den Fall „Minecraft-Version gar nicht unterstützt“, indem der
-   Container selbst `depends.minecraft` = Union aller Payload-Ranges deklariert.
+1. Two payloads sharing the same `provides` alias ID can **never** be loaded simultaneously — structural
+   exclusivity without any logic of our own.
+2. The optimisation objective (“as many/as new as possible”) is **not a deterministic priority mechanism** on
+   which payload selection may be based: with two simultaneously satisfiable payloads it is unspecified which one
+   wins. **Therefore the disjointness of payload constraints must be proven at *build time*** (chapter 12.6,
+   validator rules `OMNI-1010`/`OMNI-1012`). The framework's `priority` mechanism is consequently not evaluated at
+   runtime but converted into *disjoint* ranges at build time (range subtraction, chapter 12.7).
+3. Unsatisfiability of a *root* mod produces a detailed, localised loader error message with a Fabric GUI dialog.
+   We use that for the case “Minecraft version not supported at all” by having the container itself declare
+   `depends.minecraft` = union of all payload ranges.
 
-### 5.2.4 Classpath-Verhalten und Knot
+### 5.2.4 Classpath behaviour and Knot
 
-* `KnotClassLoader` (bzw. `KnotCompatibilityClassLoader` bei `-Dfabric.loader.useCompatibilityClassLoader=true`)
-  ist der ClassLoader für **Minecraft und alle Mods**. Er delegiert an einen internen
-  `URLClassLoader`-artigen Delegate für Ressourcen und wendet auf jede geladene Klasse die Transformer-Kette
-  an (Access Widener → Mixin → Fabric-eigene Transformer).
-* **Es gibt keine Isolation zwischen Mods.** Alle Mod-Klassen liegen im selben Namensraum desselben
-  ClassLoaders. Daraus folgt direkt: (a) Payload-Klassen können Common-Klassen des Containers sehen und
-  umgekehrt; (b) es gibt keine `ClassIdentity`-Probleme; (c) gleiche FQCN aus zwei Mods kollidieren
-  (first wins) — der Grund, warum die Runtime als **genestete Mod mit Loader-Deduplizierung** ausgeliefert
-  wird und nicht als geschatteter Fat-Jar-Inhalt (ADR-008).
-* Parent des `KnotClassLoader` ist der System-ClassLoader; dort liegen JVM-Klassen und der Loader selbst.
-  Klassen unter `net.fabricmc.loader.` werden vom Parent geladen (Loader-Interna sind für Mods sichtbar,
-  aber nicht transformierbar).
-* Mixin-Transformation greift nur für Klassen, die **durch den KnotClassLoader** geladen werden. Ein eigener
-  Child-ClassLoader umgeht die Transformer-Kette komplett — dort landende Klassen bekommen weder Mixins noch
-  Access Widening, und ihre Minecraft-Typen wären, falls dort erneut geladen, inkompatibel zu denen im
-  Knot-Loader. Das ist der harte Grund gegen Ansatz D.
+* `KnotClassLoader` (or `KnotCompatibilityClassLoader` with
+  `-Dfabric.loader.useCompatibilityClassLoader=true`) is the ClassLoader for **Minecraft and all mods**. It
+  delegates to an internal `URLClassLoader`-like delegate for resources and applies the transformer chain to every
+  loaded class (access widener → Mixin → Fabric's own transformers).
+* **There is no isolation between mods.** All mod classes live in the same namespace of the same ClassLoader. It
+  follows directly that (a) payload classes can see the container's common classes and vice versa; (b) there are
+  no `ClassIdentity` problems; (c) identical FQCNs from two mods collide (first wins) — which is why the runtime
+  is shipped as a **nested mod with loader deduplication** rather than as shaded fat-JAR content (ADR-008).
+* The parent of `KnotClassLoader` is the system ClassLoader, holding JVM classes and the loader itself. Classes
+  under `net.fabricmc.loader.` are loaded by the parent (loader internals are visible to mods but not
+  transformable).
+* Mixin transformation applies only to classes loaded **through the KnotClassLoader**. A custom child ClassLoader
+  bypasses the transformer chain entirely — classes landing there receive neither mixins nor access widening, and
+  their Minecraft types, if loaded there again, would be incompatible with those in the Knot loader. That is the
+  hard argument against approach D.
 
 ### 5.2.5 Entrypoints
 
-* Phasen: `preLaunch` (`PreLaunchEntrypoint`), `main` (`ModInitializer`), `client` (`ClientModInitializer`),
-  `server` (`DedicatedServerModInitializer`), sowie mod-definierte Phasen beliebiger Typen über
+* Phases: `preLaunch` (`PreLaunchEntrypoint`), `main` (`ModInitializer`), `client` (`ClientModInitializer`),
+  `server` (`DedicatedServerModInitializer`), plus mod-defined phases of arbitrary types via
   `FabricLoader#getEntrypointContainers`.
-* Aufrufreihenfolge: Mods werden topologisch nach `depends` sortiert; innerhalb gleicher Ordnung nach ID.
-  **Da jedes Payload `depends` auf den Container deklariert, laufen Container-Entrypoints garantiert vor
-  Payload-Entrypoints.** Die Runtime verlässt sich nicht allein darauf (idempotente, explizit sequenzierte
-  Initialisierung, Kapitel 9.6), nutzt es aber als Standardpfad.
-* Eine Ausnahme aus einem Entrypoint wird von `EntrypointUtils` in eine
-  `net.fabricmc.loader.impl.FormattedException` verpackt und von Knot über die Fabric-Fehler-GUI angezeigt
-  (Client) bzw. formatiert nach stderr geschrieben (Server). Die **Message der geworfenen Exception erscheint
-  dabei vollständig** — das ist unser Kanal für Diagnoseberichte, ohne Loader-Interna zu berühren
-  (Kapitel 29.4).
-* `preLaunch` läuft **vor** dem ersten Minecraft-Class-Load. Ein Abbruch dort ist sauber: keine halb
-  initialisierte Registry, keine bereits angewandten Mixins.
+* Invocation order: mods are sorted topologically by `depends`; within equal ordering, by ID. **Since every
+  payload declares `depends` on the container, container entrypoints are guaranteed to run before payload
+  entrypoints.** The runtime does not rely on that alone (idempotent, explicitly sequenced initialisation,
+  chapter 9.6) but uses it as the standard path.
+* An exception thrown from an entrypoint is wrapped by `EntrypointUtils` into a
+  `net.fabricmc.loader.impl.FormattedException` and rendered by Knot through the Fabric error GUI (client) or
+  written formatted to stderr (server). The **message of the thrown exception appears in full** — that is our
+  channel for diagnostic reports without touching loader internals (chapter 29.4).
+* `preLaunch` runs **before** the first Minecraft class load. Aborting there is clean: no half-initialised
+  registry, no already-applied mixins.
 
-### 5.2.6 Objekt-Austausch zwischen Mods
+### 5.2.6 Object exchange between mods
 
-`FabricLoader.getInstance().getObjectShare()` (Loader ≥ 0.12) ist eine prozessweite `Map<String,Object>` mit
-`put`/`get`/`whenAvailable`. FabricMultiLoader nutzt sie, um pro Container einen Handle zu veröffentlichen
-(`"<modid>:omni"` → `ContainerHandle`), damit Drittmods und Debug-Werkzeuge den aktiven Payload auslesen
-können, ohne Klassen der Runtime zu importieren (Kapitel 19.9).
+`FabricLoader.getInstance().getObjectShare()` (loader ≥ 0.12) is a process-wide `Map<String,Object>` with
+`put`/`get`/`whenAvailable`. FabricMultiLoader uses it to publish a handle per container
+(`"<modid>:omni"` → `ContainerHandle`) so third-party mods and debug tools can read the active payload without
+importing runtime classes (chapter 19.9).
 
 ---
 
 ## 5.3 Mixin
 
-### 5.3.1 Zeitpunkte
+### 5.3.1 Timing
 
-| Zeitpunkt | Was passiert |
+| Point in time | What happens |
 |---|---|
-| Knot 2.4 | `Mixins.addConfiguration(name)` je Config-Eintrag ausgewählter Mods. Es wird nur der **Dateiname registriert**, die JSON-Datei noch nicht zwingend geparst. |
-| Erste Transformation | `MixinProcessor#select` → alle registrierten Configs werden geparst, `IMixinConfigPlugin#onLoad` aufgerufen, Mixin-Klassen aufgelöst (`ClassInfo`), `targets` validiert. |
-| Pro Ziel-Class-Load | `shouldApplyMixin` (Plugin) → `preApply` → Injektion → `postApply`. Fehlende Targets/Injection-Points erzeugen `InvalidInjectionException`/`MixinApplyError`. |
+| Knot 2.4 | `Mixins.addConfiguration(name)` per config entry of selected mods. Only the **file name is registered**; the JSON file is not necessarily parsed yet. |
+| First transformation | `MixinProcessor#select` → all registered configs are parsed, `IMixinConfigPlugin#onLoad` is called, mixin classes are resolved (`ClassInfo`), `targets` are validated. |
+| Per target class load | `shouldApplyMixin` (plugin) → `preApply` → injection → `postApply`. Missing targets/injection points raise `InvalidInjectionException`/`MixinApplyError`. |
 
-Wichtig: **Die Validierung einer Mixin-Klasse passiert erst, wenn ihre Config registriert ist.** Eine nicht
-registrierte Config kostet exakt null — kein Datei-Read, kein ASM, kein Fehler. Das ist die Grundlage von
-G4/F-04.
+Important: **a mixin class is validated only once its config is registered.** A config that was never registered
+costs exactly nothing — no file read, no ASM, no error. That is the foundation of G4/F-04.
 
-### 5.3.2 Versionsspezifische Targets
+### 5.3.2 Version-specific targets
 
-Die realen Bruchstellen zwischen MC-Versionen:
+The real breaking points between MC versions:
 
-* **Umbenannte Klassen**: Intermediary hält Klassen stabil, aber neu eingeführte/aufgeteilte Klassen erhalten
-  neue Nummern. Beispiel: Networking-Payload-Typen in 1.20.5+ existieren in 1.20.1 gar nicht.
-* **Geänderte Methodensignaturen**: `ItemRenderer#renderItem` erhielt zwischen 1.20.1 und 1.21.x zusätzliche
-  Parameter. Ein `@Inject` mit `method = "renderItem(...)V"` ist damit versionsgebunden.
-* **Verschwundene Methoden**: Ein `@Inject` auf eine entfernte Methode ist ein harter Startfehler.
-* **Geänderte Injection Points**: `@At(value="INVOKE", target="…")` referenziert exakte Deskriptoren.
+* **Renamed classes**: intermediary keeps classes stable, but newly introduced/split classes get new numbers.
+  Example: the networking payload types of 1.20.5+ do not exist at all in 1.20.1.
+* **Changed method signatures**: `ItemRenderer#renderItem` gained additional parameters between 1.20.1 and
+  1.21.x. An `@Inject` with `method = "renderItem(...)V"` is therefore version-bound.
+* **Removed methods**: an `@Inject` on a removed method is a hard startup failure.
+* **Changed injection points**: `@At(value="INVOKE", target="…")` references exact descriptors.
 
-Konsequenz: **Ein versionsübergreifend gültiges Mixin-Set ist im Allgemeinen unmöglich.** Jede Lösung muss
-Mixin-Sets pro Version trennen. Es gibt genau drei Mechanismen dafür:
+Consequence: **a mixin set valid across versions is generally impossible.** Any solution must separate mixin sets
+per version. There are exactly three mechanisms for that:
 
-| Mechanismus | Bewertung |
+| Mechanism | Assessment |
 |---|---|
-| `IMixinConfigPlugin#shouldApplyMixin` | Verhindert *Anwendung*, aber **nicht** das Laden und Validieren der Mixin-Klasse durch `ClassInfo`. `targets`-Auflösung passiert vorher. Eine Mixin-Klasse, die eine in dieser Version nicht existierende Zielklasse referenziert, scheitert bereits in `select()`. **Unzureichend als Hauptmechanismus.** Brauchbar für Feinsteuerung *innerhalb* einer Version (z. B. „nur wenn Mod X geladen“). |
-| Getrennte Mixin-Configs pro Version, alle in einer Mod deklariert, mit Config-Plugin, das `getMixins()` leer liefert | `getMixins()` kann Mixins nachreichen; um sie zu *entfernen*, müsste man sie aus der JSON weglassen. Fabric parst die Config vollständig; `mixins`-Einträge der JSON werden immer aufgelöst. Ein Plugin kann sie nicht zurückziehen. **Nicht tragfähig.** |
-| Getrennte Mixin-Configs in getrennten Mods, von denen nur eine geladen wird | Die nicht geladene Config wird nie registriert; ihre Klassen liegen nicht einmal auf dem Classpath. **Vollständig sicher.** |
+| `IMixinConfigPlugin#shouldApplyMixin` | Prevents *application*, but **not** the loading and validation of the mixin class via `ClassInfo`. `targets` resolution happens earlier. A mixin class referencing a target class that does not exist in this version already fails in `select()`. **Insufficient as the primary mechanism.** Usable for fine-grained control *within* a version (e.g. “only if mod X is loaded”). |
+| Separate mixin configs per version, all declared in one mod, with a config plugin whose `getMixins()` returns empty | `getMixins()` can add mixins; to *remove* them one would have to omit them from the JSON. Fabric parses the config fully; `mixins` entries in the JSON are always resolved. A plugin cannot retract them. **Not viable.** |
+| Separate mixin configs in separate mods, of which only one is loaded | The non-loaded config is never registered; its classes are not even on the classpath. **Fully safe.** |
 
-Der dritte Mechanismus ist genau das, was JiJ-Payloads liefern. Deshalb ist die Payload-Trennung nicht nur eine
-Verpackungsentscheidung, sondern die **einzige belastbare** Mixin-Isolationsstrategie.
+The third mechanism is precisely what JiJ payloads provide. Payload separation is therefore not merely a packaging
+decision but the **only sound** mixin isolation strategy.
 
 ### 5.3.3 Refmaps
 
-* Loom erzeugt beim Kompilieren via Mixin-Annotation-Processor eine Refmap
-  (`<archivesBaseName>-refmap.json`), die Named-Namen (Yarn) → Intermediary abbildet, und referenziert sie in
-  der Mixin-Config über `"refmap": "…"`.
-* Die Refmap ist **strikt an die MC-Version und die Mappings gebunden**, gegen die kompiliert wurde. Ein
-  Zusammenführen von Refmaps mehrerer MC-Versionen ist semantisch falsch: Derselbe Named-Name kann in
-  verschiedenen Versionen auf verschiedene Intermediary-Namen zeigen (bei neu eingeführten Membern) und
-  dieselbe Methode kann verschiedene Deskriptoren haben.
-* **Lösung:** eine Refmap pro Payload, mit eindeutigem Namen (`examplemod-mc1201-refmap.json`), niemals
-  gemergt. Das ist automatisch der Fall, weil jedes Payload ein eigener Loom-Compile ist.
-* Im Dev-Runtime hebt der `MixinIntermediaryDevRemapper` die Refmap-Auflösung auf Named um; das ist
-  Loader-intern und funktioniert unverändert, weil pro Lauf nur ein Payload existiert.
+* When compiling, Loom produces a refmap via the Mixin annotation processor
+  (`<archivesBaseName>-refmap.json`) mapping named (Yarn) → intermediary, and references it from the mixin config
+  via `"refmap": "…"`.
+* The refmap is **strictly bound to the MC version and the mappings** it was compiled against. Merging refmaps of
+  several MC versions is semantically wrong: the same named symbol can point to different intermediary names in
+  different versions (for newly introduced members), and the same method can have different descriptors.
+* **Solution:** one refmap per payload, with a unique name (`examplemod-mc1201-refmap.json`), never merged. That
+  is automatic, because every payload is its own Loom compilation.
+* In the dev runtime, `MixinIntermediaryDevRemapper` shifts refmap resolution to named; that is loader-internal
+  and works unchanged, because only one payload exists per run.
 
-### 5.3.4 Client-/Server-Mixins
+### 5.3.4 Client/server mixins
 
-Zwei Ebenen:
+Two levels:
 
-* `fabric.mod.json`: `"mixins": [{"config": "x.client.mixins.json", "environment": "client"}]` — Config wird
-  auf dedizierten Servern nicht registriert. **Bevorzugter Mechanismus.**
-* In der Config: `"client": [...]`, `"server": [...]`, `"mixins": [...]` — Mixin-eigene Aufteilung nach
+* `fabric.mod.json`: `"mixins": [{"config": "x.client.mixins.json", "environment": "client"}]` — the config is
+  not registered on dedicated servers. **Preferred mechanism.**
+* Inside the config: `"client": [...]`, `"server": [...]`, `"mixins": [...]` — Mixin's own split by
   `MixinEnvironment.Side`.
 
-FabricMultiLoader generiert pro Payload bis zu drei Configs (`common`, `client`, `server`) und deklariert sie mit
-korrektem `environment`. Client-Mixins referenzieren Klassen, die auf einem dedizierten Server nicht existieren
-(`net.minecraft.client.**`) — die Trennung ist daher nicht optional, sondern Pflicht.
+FabricMultiLoader generates up to three configs per payload (`common`, `client`, `server`) and declares them with
+the correct `environment`. Client mixins reference classes that do not exist on a dedicated server
+(`net.minecraft.client.**`) — the split is therefore not optional but mandatory.
 
-### 5.3.5 Grenzen
+### 5.3.5 Limits
 
-* Mixins können nicht *nachträglich* auf bereits geladene Klassen angewendet werden. Da unsere Payload-Auswahl
-  im Solver (vor 2.4) passiert, ist das kein Problem.
-* Zwei Payloads könnten theoretisch identische Mixin-Klassennamen enthalten. Da nie zwei Payloads geladen
-  werden, ist das harmlos; der Validator erzwingt dennoch eindeutige **Config-Dateinamen und Refmap-Namen**
-  über alle Payloads (Regel `OMNI-1030`), damit Slim-Jars und manuelles Debugging eindeutig bleiben.
-* `@Mixin(targets = "…")` mit String-Klassennamen umgeht die Refmap-Prüfung und ist versionsfragil; die
-  Dokumentation empfiehlt Klassenliterale.
-
----
-
-## 5.4 Access Widener
-
-### 5.4.1 Verarbeitung
-
-* Format: Textdatei, Header `accessWidener v2 <namespace>` (Namespace `named` in Sources, `intermediary` im
-  publizierten Artefakt — Loom remappt beim `remapJar`).
-* Der Loader liest die AW-Dateien **aller ausgewählten Mods** in Phase 2.3g in einen gemeinsamen
-  `AccessWidener` und installiert einen `AccessWidenerClassTransformer` in der Knot-Transformerkette. Die
-  Erweiterung passiert beim Class-Load, vor Mixin.
-* Namespace-Prüfung: Der Loader verlangt, dass der Header-Namespace zum Runtime-Namespace passt
-  (`intermediary` in Produktion, `named` im Dev-Run). Falscher Namespace ⇒ harter Fehler.
-* Einträge, deren Klasse nie geladen wird, sind wirkungslos. Einträge auf ein **nicht existierendes Member
-  einer existierenden Klasse** werden beim Transformieren nicht gefunden und stillschweigend ignoriert —
-  das ist kein Fehler, aber auch keine verlässliche Grundlage: Eine versionsübergreifende AW-Datei wäre also
-  „meistens harmlos“, aber sie kann nicht ausdrücken, dass ein Member in einer Version anders heißt.
-
-### 5.4.2 Warum eine gemeinsame AW-Datei nicht reicht
-
-1. Intermediary-Namen für **neu eingeführte** Member unterscheiden sich zwischen Versionen; eine Zeile
-   `accessible field net/minecraft/class_310 field_1724 …` kann in 1.20.1 ein anderes Feld meinen als in 1.21.4,
-   falls Felder umnummeriert wurden.
-2. Klassen, die in einer Version nicht existieren, erzeugen keine Fehler — aber Loom kann eine AW-Datei nur
-   gegen **eine** Mappings-Version remappen. Eine handgeschriebene, versionsübergreifende AW-Datei müsste
-   bereits in Intermediary vorliegen und damit auf Yarn-Komfort verzichten.
-3. Der Loader akzeptiert exakt **einen** `accessWidener`-Pfad pro Mod. Mehrere Dateien pro Mod sind nicht
-   deklarierbar.
-
-### 5.4.3 Konsequenz
-
-**Ein Payload = eine Mod = ein eigener Access Widener, von Loom gegen die richtige Mappings-Version remappt.**
-Das ist die vollständige Lösung; sie braucht keine Runtime-Transformationen, keine Reflection und keinen
-eigenen Transformer. Der Container selbst deklariert **keinen** Access Widener (Validator-Regel `OMNI-1024`),
-weil er keine Minecraft-Klassen berührt.
-
-Für den Sonderfall „dasselbe AW-Bedürfnis in allen Versionen“ generiert das Gradle-Plugin die Payload-AW-Datei
-aus einer gemeinsamen Quelle: `common/src/main/accesswidener/shared.accesswidener` wird jedem Version-Modul
-als Basis untergelegt und mit `versions/mc-X/src/main/resources/<modid>.accesswidener` gemergt
-(Kapitel 17.4) — der Merge findet in Named-Namespace *vor* dem Loom-Remap statt, ist also mappingkorrekt.
+* Mixins cannot be applied retroactively to already-loaded classes. Since our payload selection happens in the
+  solver (before 2.4), that is not a problem.
+* Two payloads could in theory contain identical mixin class names. Since two payloads are never loaded, that is
+  harmless; the validator nevertheless enforces unique **config file names and refmap names** across all payloads
+  (rule `OMNI-1030`) so that slim JARs and manual debugging stay unambiguous.
+* `@Mixin(targets = "…")` with string class names bypasses refmap checking and is version-fragile; the
+  documentation recommends class literals.
 
 ---
 
-## 5.5 Java und JVM
+## 5.4 Access wideners
 
-### 5.5.1 Java-Anforderungen je Minecraft-Version
+### 5.4.1 Processing
 
-| Minecraft | erforderliche Java-Major | Classfile-Major der MC-Klassen |
+* Format: text file, header `accessWidener v2 <namespace>` (namespace `named` in sources, `intermediary` in the
+  published artifact — Loom remaps during `remapJar`).
+* The loader reads the AW files of **all selected mods** in phase 2.3g into a shared `AccessWidener` and installs
+  an `AccessWidenerClassTransformer` in Knot's transformer chain. Widening happens at class load, before Mixin.
+* Namespace check: the loader requires the header namespace to match the runtime namespace (`intermediary` in
+  production, `named` in a dev run). Wrong namespace ⇒ hard failure.
+* Entries whose class is never loaded have no effect. Entries targeting a **non-existent member of an existing
+  class** are simply not found during transformation and are silently ignored — that is not an error, but also not
+  a reliable foundation: a cross-version AW file would be “mostly harmless”, yet it cannot express that a member
+  is named differently in one version.
+
+### 5.4.2 Why a single shared AW file is not enough
+
+1. Intermediary names for **newly introduced** members differ between versions; a line
+   `accessible field net/minecraft/class_310 field_1724 …` may denote a different field in 1.20.1 than in 1.21.4
+   if fields were renumbered.
+2. Classes that do not exist in a version cause no errors — but Loom can remap an AW file against only **one**
+   mappings version. A hand-written cross-version AW file would have to be written in intermediary already, giving
+   up Yarn readability.
+3. The loader accepts exactly **one** `accessWidener` path per mod. Multiple files per mod cannot be declared.
+
+### 5.4.3 Consequence
+
+**One payload = one mod = its own access widener, remapped by Loom against the correct mappings version.** That is
+the complete solution; it needs no runtime transformation, no reflection and no custom transformer. The container
+itself declares **no** access widener (validator rule `OMNI-1024`), because it touches no Minecraft classes.
+
+For the special case “the same AW need in every version”, the Gradle plugin generates the payload AW file from a
+shared source: `common/src/main/accesswidener/shared.accesswidener` is laid underneath every version module and
+merged with `versions/mc-X/src/main/resources/<modid>.accesswidener` (chapter 17.4) — the merge happens in the
+named namespace *before* Loom's remap and is therefore mapping-correct.
+
+---
+
+## 5.5 Java and the JVM
+
+### 5.5.1 Java requirements per Minecraft version
+
+| Minecraft | required Java major | class file major of MC classes |
 |---|---|---|
 | 1.16.5 | 8 | 52 |
 | 1.17 – 1.17.1 | 16 | 60 |
 | 1.18 – 1.20.4 | 17 | 61 |
 | 1.20.5 – 1.21.x | 21 | 65 |
-| **26.1 und neuer** | **25** | **69** |
-| künftig | ≥ 25 | ≥ 69 |
+| **26.1 and newer** | **25** | **69** |
+| future | ≥ 25 | ≥ 69 |
 
-Der Sprung 1.21.x → 26.1 hebt die erforderliche Java-Hauptversion von 21 auf **25** (Classfile-Major 69). Eine
-Mod, die 1.20.1, 1.21.1 und 26.1 unterstützt, muss also Payloads mit den Classfile-Majors 61, 65 und 69 in
-**einer** Datei ausliefern und auf einer Java-17-JVM (1.20.1) trotzdem startfähig bleiben. Genau das leistet
-`depends.java` in Verbindung mit der Tatsache, dass nicht ausgewählte Payloads nie definiert werden.
+The jump from 1.21.x to 26.1 raises the required Java major from 21 to **25** (class file major 69). A mod
+supporting 1.20.1, 1.21.1 and 26.1 must therefore ship payloads with class file majors 61, 65 and 69 in **one**
+file and still be startable on a Java 17 JVM (1.20.1). That is exactly what `depends.java` achieves, in
+combination with the fact that non-selected payloads are never defined.
 
-Die JVM prüft die Classfile-Version **beim Definieren einer Klasse** (`ClassLoader#defineClass` →
-`UnsupportedClassVersionError`), nicht beim Lesen der JAR. Solange eine Class-Datei nicht definiert wird, ist
-ihre Version irrelevant. Der Loader definiert nur Klassen ausgewählter Mods (5.1, Beobachtung 1) ⇒ **eine
-Universal-JAR darf Payloads mit Classfile-Major 61 und 65 gleichzeitig enthalten** (Antwort auf Frage 21/22).
+The JVM checks the class file version **when defining a class** (`ClassLoader#defineClass` →
+`UnsupportedClassVersionError`), not when reading the JAR. As long as a class file is not defined, its version is
+irrelevant. The loader defines only classes of selected mods (5.1, observation 1) ⇒ **a universal JAR may contain
+payloads with class file majors 61, 65 and 69 simultaneously** (answer to questions 21/22).
 
-### 5.5.2 Was zwingend auf Baseline-Level kompiliert werden muss
+### 5.5.2 What must mandatorily be compiled at baseline level
 
-Alles, was auf der **ältesten** unterstützten Umgebung geladen wird:
+Everything that is loaded in the **oldest** supported environment:
 
-| Artefakt | Ziel-Bytecode | Begründung |
+| Artifact | Target bytecode | Rationale |
 |---|---|---|
-| `fabricmultiloader-format` | 52 (Java 8) | wird auch vom Gradle-Plugin genutzt; muss auf jeder unterstützten JVM laufen |
-| `fabricmultiloader-api` | 52 | vom Common-Code und allen Payloads referenziert |
-| `fabricmultiloader-runtime` | 52 | Bootstrap läuft auf der ältesten JVM |
-| `fabricmultiloader-processor` | 52 | Annotation Processor, läuft im Build |
-| Container-Common des Mods | `baselineJava` aus der Matrix (Beispiel: 17) | wird auf der ältesten unterstützten MC-Version geladen |
-| Payload `mc-1.20.1` | 61 | MC 1.20.1 → Java 17 |
-| Payload `mc-1.21.4` | 65 | MC 1.21.4 → Java 21 |
+| `fabricmultiloader-format` | 52 (Java 8) | also used by the Gradle plugin; must run on every supported JVM |
+| `fabricmultiloader-api` | 52 | referenced by common code and all payloads |
+| `fabricmultiloader-runtime` | 52 | the bootstrap runs on the oldest JVM |
+| `fabricmultiloader-processor` | 52 | annotation processor, runs in the build |
+| the mod's container common code | `baselineJava` from the matrix (example: 17) | loaded on the oldest supported MC version |
+| payload `mc-1.20.1` | 61 | MC 1.20.1 → Java 17 |
+| payload `mc-1.21.4` | 65 | MC 1.21.4 → Java 21 |
 
-Der Validator scannt jede Class-Datei des Containers und jedes Payloads und vergleicht den Major-Wert mit dem
-deklarierten Soll (Regel `OMNI-1040`/`OMNI-1041`). Ein versehentliches `--release 21` im Common-Modul wird so
-zur Build-Zeit gefangen, nicht beim Spieler.
+The validator scans every class file of the container and of every payload and compares the major value against
+the declared expectation (rules `OMNI-1040`/`OMNI-1041`). An accidental `--release 21` in the common module is
+thereby caught at build time, not on the player's machine.
 
-### 5.5.3 Multi-Release-JARs — warum sie hier ungeeignet sind
+### 5.5.3 Multi-release JARs — why they are unsuitable here
 
-Ein MR-JAR (`Multi-Release: true`, `META-INF/versions/<n>/…`) selektiert nach **Java-Version**, nicht nach
-Minecraft-Version. Damit:
+An MR JAR (`Multi-Release: true`, `META-INF/versions/<n>/…`) selects by **Java version**, not by Minecraft
+version. Therefore:
 
-* könnte man Java-17- vs. Java-21-Bytecode trennen — aber nicht 1.21.1 von 1.21.4 (beide Java 21). Das
-  eigentliche Problem wird nicht adressiert.
-* wird die Selektion vom ClassLoader gemacht. `KnotClassLoader` implementiert MR-Semantik nicht garantiert
-  (er liest Ressourcen über einen eigenen Delegate); Verhalten wäre loaderversionsabhängig.
-* wären Mixin-Configs, Refmaps und `fabric.mod.json` nicht mit-selektierbar — sie liegen als Ressourcen im
-  Root und sind nicht MR-fähig im Sinne des Loaders.
+* it could separate Java 17 from Java 21 bytecode — but not 1.21.1 from 1.21.4 (both Java 21). The actual problem
+  is not addressed.
+* selection is performed by the ClassLoader. `KnotClassLoader` does not guarantee MR semantics (it reads resources
+  through its own delegate); behaviour would depend on the loader version.
+* mixin configs, refmaps and `fabric.mod.json` could not be selected along with the classes — they live at the
+  root and are not MR-capable in the loader's sense.
 
-**Verworfen.** MR-JARs lösen ein anderes Problem.
+**Rejected.** MR JARs solve a different problem.
 
-### 5.5.4 Lazy Classloading als Isolationsmechanismus — und seine Grenze
+### 5.5.4 Lazy classloading as an isolation mechanism — and its limit
 
-Ein oft vorgeschlagener Ansatz ist: „alles in eine JAR, Klassen werden ohnehin lazy geladen“. Das trägt nur
-teilweise:
+A frequently proposed approach is “put everything in one JAR, classes are loaded lazily anyway”. That only carries
+part of the way:
 
-* Klassen werden tatsächlich erst beim ersten aktiven Gebrauch definiert. Ein `if (mc >= 1.21) new Foo1214()`
-  lädt `Foo1214` nur im `true`-Zweig — **aber** die *verifizierende* Methode, die `Foo1214` referenziert, muss
-  auflösbar sein; die Auflösung ist in HotSpot lazy pro Bytecode-Instruktion, also praktisch tolerant.
-* **Aber**: Mixin-Configs und Access Widener sind *keine* lazy geladenen Klassen, sondern deklarative
-  Metadaten, die der Loader eagerly verarbeitet. Genau hier bricht der naive Ansatz.
-* **Und**: Sponge Mixin baut für jede Mixin-Klasse einer registrierten Config ein `ClassInfo` — das ist ein
-  eagerer ASM-Read der Mixin-Klasse *und* ihrer Targets.
+* Classes are indeed defined only on first active use. An `if (mc >= 1.21) new Foo1214()` loads `Foo1214` only in
+  the `true` branch — **however** the verifying method referencing `Foo1214` must be resolvable; resolution in
+  HotSpot is lazy per bytecode instruction, hence practically tolerant.
+* **But**: mixin configs and access wideners are *not* lazily loaded classes but declarative metadata that the
+  loader processes eagerly. That is exactly where the naive approach breaks.
+* **And**: Sponge Mixin builds a `ClassInfo` for every mixin class of a registered config — that is an eager ASM
+  read of the mixin class *and* its targets.
 
-Lazy Classloading ist also eine **notwendige, aber nicht ausreichende** Eigenschaft. Es ist der Grund, warum
-Common-Code und Runtime problemlos in einer JAR neben allem anderen leben können; es ist nicht der Grund, warum
-Payloads isoliert sind — das leistet die JiJ-Auswahl.
+Lazy classloading is therefore a **necessary but not sufficient** property. It is the reason common code and the
+runtime can live in one JAR alongside everything else; it is not the reason payloads are isolated — that is
+achieved by JiJ selection.
 
 ### 5.5.5 Reflection, MethodHandles, ServiceLoader
 
-* **Reflection** wird ausschließlich an einer Stelle im kritischen Pfad verwendet:
-  `Class.forName(platformFactory).getDeclaredConstructor().newInstance()`. Der Klassenname stammt aus dem
-  signierten/gehashten Manifest, nicht aus einem Scan. Kosten: eine Klasse.
-* **MethodHandles** werden nicht verwendet. Sie brächten keinen Vorteil, da die Aufrufe einmalig sind, und
-  erhöhten die Baseline-Anforderungen (`MethodHandles.privateLookupIn` erst ab Java 9).
-* **ServiceLoader** wird bewusst **nicht** für Payload-Discovery verwendet: `ServiceLoader` scannt
-  `META-INF/services/**` über den gesamten Classpath, wäre also nichtdeterministisch bei mehreren Universal-Mods
-  und liefert keine brauchbaren Fehlermeldungen. Stattdessen: explizite FQCN im Manifest.
-  (`ServiceLoader` *funktioniert* im Knot-Loader — die Entscheidung ist eine Determinismus-Entscheidung,
-  keine technische Notwendigkeit.)
-* **`ClassCastException`/Class-Identity**: Ausgeschlossen, weil kein zweiter ClassLoader existiert. Jede Klasse
-  wird von genau einem Loader (Knot) definiert.
+* **Reflection** is used at exactly one place on the critical path:
+  `Class.forName(platformFactory).getDeclaredConstructor().newInstance()`. The class name comes from the
+  hashed manifest, not from a scan. Cost: one class.
+* **MethodHandles** are not used. They would bring no benefit, since the calls are one-off, and they would raise
+  the baseline requirement (`MethodHandles.privateLookupIn` only from Java 9).
+* **ServiceLoader** is deliberately **not** used for payload discovery: `ServiceLoader` scans
+  `META-INF/services/**` across the entire classpath, would therefore be non-deterministic with several universal
+  mods and yields no usable error messages. Instead: an explicit FQCN in the manifest.
+  (`ServiceLoader` *works* in the Knot loader — the decision is about determinism, not technical necessity.)
+* **`ClassCastException`/class identity**: ruled out, because no second ClassLoader exists. Every class is defined
+  by exactly one loader (Knot).
 
 ---
 
 ## 5.6 Mappings
 
-### 5.6.1 Namensräume
+### 5.6.1 Namespaces
 
-| Namespace | Eigenschaften |
+| Namespace | Properties |
 |---|---|
-| `official` | Mojangs obfuszierte Namen; ändern sich pro Version vollständig. |
-| `intermediary` | Von Fabric verwaltet, **über Versionen hinweg stabil, solange das Element „dasselbe“ bleibt**. Neue Elemente erhalten neue Nummern; entfernte Nummern werden nicht wiederverwendet. Runtime-Namespace in Produktion. |
-| `named` (Yarn) | Menschenlesbar, pro Version eigener Build, umbenennbar zwischen Versionen. Dev-Runtime-Namespace. |
-| Mojang Official Mappings | Alternativ zu Yarn nutzbar (Loom `layered { officialMojangMappings() }`); ändert nichts an der Architektur, da pro Payload frei wählbar. |
+| `official` | Mojang's obfuscated names; change completely per version. |
+| `intermediary` | Managed by Fabric, **stable across versions as long as the element stays “the same”**. New elements receive new numbers; removed numbers are not reused. Runtime namespace in production. |
+| `named` (Yarn) | Human-readable, its own build per version, renameable between versions. Dev runtime namespace. |
+| Mojang official mappings | Usable as an alternative to Yarn (Loom `layered { officialMojangMappings() }`); changes nothing about the architecture, since it is freely selectable per payload. |
 
-### 5.6.2 Warum Intermediary-Stabilität nicht ausreicht
+### 5.6.2 Why intermediary stability is not enough
 
-Intermediary garantiert Namensstabilität, **nicht Signaturstabilität**. Wenn `method_1234(PacketByteBuf)` zu
-`method_1234(RegistryByteBuf)` wird, bleibt der Name gleich, aber der Deskriptor ändert sich — und Bytecode
-referenziert Name **und** Deskriptor. Ein einzelnes Kompilat kann daher nicht beide Versionen bedienen.
-Genau hier liegt die harte Grenze, an der „ein Kompilat für alle Versionen“ scheitert (Nicht-Ziel N2) und
-weshalb pro Version kompiliert und remappt werden muss.
+Intermediary guarantees name stability, **not signature stability**. When `method_1234(PacketByteBuf)` becomes
+`method_1234(RegistryByteBuf)`, the name stays the same but the descriptor changes — and bytecode references name
+**and** descriptor. A single compilation therefore cannot serve both versions. This is precisely the hard limit at
+which “one artifact for all versions” fails (non-goal N2) and why compilation and remapping must happen per
+version.
 
-### 5.6.3 Konsequenzen für die Architektur
+### 5.6.3 Consequences for the architecture
 
-1. **Pro Payload ein vollständiger Loom-Build** mit eigener MC-Version, eigenen Mappings, eigenem Refmap,
-   eigenem AW-Remap. Payloads dürfen unterschiedliche Mapping-*Provider* nutzen (Yarn hier, Mojmap dort), weil
-   sie keinen Bytecode teilen.
-2. **Der Container ist namespace-neutral**, weil er keine Minecraft-Referenz enthält. Er wird von Loom nie
-   remappt (Validator-Regel `OMNI-1042`: keine Referenz auf `net/minecraft/`, `com/mojang/blaze3d/`,
-   `net/fabricmc/fabric/api/` in Container-Klassen).
-3. **Der Dev-Runtime** remappt ausgewählte Mods intermediary→named. Das betrifft nur das Payload; der Container
-   bleibt unverändert. Damit funktioniert auch das Testen der fertigen Universal-JAR im Loom-Dev-Run.
+1. **One complete Loom build per payload**, with its own MC version, its own mappings, its own refmap, its own AW
+   remap. Payloads may use different mapping *providers* (Yarn here, Mojmap there), because they share no
+   bytecode.
+2. **The container is namespace-neutral**, because it contains no Minecraft reference. Loom never remaps it
+   (validator rule `OMNI-1042`: no references to `net/minecraft/`, `com/mojang/blaze3d/`,
+   `net/fabricmc/fabric/api/` in container classes).
+3. **The dev runtime** remaps selected mods intermediary→named. That affects only the payload; the container stays
+   untouched. Testing the finished universal JAR in a Loom dev run therefore works as well.
 
 ---
 
-## 5.7 Zusammenfassung: Wo die eigentlichen Schwierigkeiten liegen
+## 5.7 Summary: where the real difficulties lie
 
-| Schwierigkeit | Härtegrad | Lösung in dieser Architektur |
+| Difficulty | Severity | Resolution in this architecture |
 |---|---|---|
-| Mixin-Configs werden eagerly verarbeitet | **hart** | Config lebt in der Payload-Mod; nicht geladene Mod ⇒ keine Config. |
-| Access Widener: genau eine Datei pro Mod, mappingabhängig | **hart** | Payload = eigene Mod ⇒ eigener AW. Gemeinsame AW-Quelle wird pre-remap gemergt. |
-| Unterschiedliche Deskriptoren derselben MC-Methode | **hart, unlösbar in einem Kompilat** | N Kompilate, ein Container. Common-Code darf MC nicht berühren. |
-| Unterschiedliche Java-Major-Versionen | mittel | `depends.java` + Solver + Validator-Classfile-Scan. |
-| Deterministische Payload-Auswahl | mittel | Build-Zeit-Disjunktheitsbeweis + `provides`-Exklusivität + Runtime-Assertion. |
-| Eine Mod-Identität nach außen | mittel | Container trägt die primäre Mod-ID; Payloads sind ModMenu-Kinder mit Library-Badge. |
-| Versionsabhängige Fabric-API-/Mod-Abhängigkeiten | leicht | Pro Payload eigene `depends`; optional pro Payload genestete Bibliotheken. |
-| Ressourcenkonflikte zwischen Common und Payload | leicht | Ressourcen werden zur Build-Zeit in das Payload gemergt; der Container trägt **keine** `assets/`- oder `data/`-Einträge. |
-| Loader-Verhalten bei unerfüllbaren genesteten Mods | **tragende Annahme** | Conformance-Test über Loader-Matrix in CI; Rückfallpfad `buildSlimJars`. |
-| Größe der JAR | akzeptiert | N Payloads, keine Deduplizierung. |
+| Mixin configs are processed eagerly | **hard** | The config lives in the payload mod; mod not loaded ⇒ no config. |
+| Access wideners: exactly one file per mod, mapping-dependent | **hard** | Payload = its own mod ⇒ its own AW. A shared AW source is merged pre-remap. |
+| Different descriptors for the same MC method | **hard, unsolvable in one artifact** | N compilations, one container. Common code must not touch Minecraft. |
+| Different Java major versions | medium | `depends.java` + solver + validator class file scan. |
+| Deterministic payload selection | medium | Build-time disjointness proof + `provides` exclusivity + runtime assertion. |
+| One mod identity to the outside | medium | The container carries the primary mod ID; payloads are ModMenu children with a library badge. |
+| Version-dependent Fabric API / mod dependencies | easy | Own `depends` per payload; optionally nested libraries per payload. |
+| Resource conflicts between common and payload | easy | Resources are merged into every payload at build time; the container carries **no** `assets/` or `data/` entries. |
+| Loader behaviour for unsatisfiable nested mods | **load-bearing assumption** | Conformance test across the loader matrix in CI; fallback path `buildSlimJars`. |
+| Size of the JAR | accepted | N payloads, no deduplication. |
 
 ---
 
-Weiter mit [Kapitel 6–9 — Architekturvarianten und finale Entscheidung](part-02-architecture.md).
+Continue with [chapters 6–9 — architecture variants and the final decision](part-02-architecture.md).

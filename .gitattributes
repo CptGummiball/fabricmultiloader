@@ -1,7 +1,7 @@
-# Normalisiere Zeilenenden im Repository auf LF; Auschecken plattformabhängig.
+# Normalize line endings to LF in the repository; checkout is platform-dependent.
 * text=auto eol=lf
 
-# Reproduzierbare Builds: diese Dateien müssen bitgenau LF sein.
+# Reproducible builds: these files must be byte-exact LF.
 *.java   text eol=lf
 *.kt     text eol=lf
 *.kts    text eol=lf
@@ -15,16 +15,16 @@
 gradlew  text eol=lf
 *.sh     text eol=lf
 
-# Windows-Skripte brauchen CRLF.
+# Windows scripts need CRLF.
 *.bat    text eol=crlf
 gradlew.bat text eol=crlf
 
-# Binärdateien nie anfassen.
+# Never touch binary files.
 *.jar    binary
 *.png    binary
 *.ogg    binary
 *.zip    binary
 *.ico    binary
 
-# Linguist: Dokumentation nicht als Projektsprache zählen.
+# Linguist: do not count documentation as a project language.
 docs/** linguist-documentation

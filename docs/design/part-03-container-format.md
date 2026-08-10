@@ -1,155 +1,151 @@
-# 10. Universal Container Format — „Omni Container v1“
+# 10. Universal Container Format — “Omni Container v1”
 
-## 10.1 Name und Abgrenzung
+## 10.1 Name and delimitation
 
-Der Formatname ist **Omni Container**, Format-ID `omni/1`. Die Abkürzung „FMLU“ wird bewusst **nicht** verwendet,
-weil „FML“ historisch für Forge Mod Loader steht und jede Verwechslung Support-Aufwand erzeugt. Fehlercodes
-tragen das Präfix `OMNI-`, das Manifest heißt `META-INF/omni-container.json`, projektinterne Ressourcen liegen
-unter `omni/`.
+The format name is **Omni Container**, format ID `omni/1`. The abbreviation “FMLU” is deliberately **not** used,
+because “FML” historically stands for Forge Mod Loader and any confusion creates support burden. Error codes carry
+the prefix `OMNI-`, the manifest is called `META-INF/omni-container.json`, project-internal resources live under
+`omni/`.
 
-Eine Omni-Container-Datei ist **immer auch eine gültige Fabric-Mod-JAR**. Das Format ist eine
-*Konformitätsprofilierung* des JAR-Formats, kein neues Binärformat: Es gibt keinen eigenen Header, keine eigene
-Kompression und keinen eigenen Index. Begründung: Jedes Byte, das ein fremdes Werkzeug (Fabric Loader, Prism,
-Modrinth-Indexer, `jar tf`, ModMenu) nicht versteht, ist eine Kompatibilitätsschuld. Der „Magic Marker“ ist
-deshalb eine Datei, nicht eine Bytefolge.
+An Omni container file is **always also a valid Fabric mod JAR**. The format is a *conformance profile* of the JAR
+format, not a new binary format: there is no custom header, no custom compression and no custom index. Rationale:
+every byte a foreign tool (Fabric Loader, Prism, the Modrinth indexer, `jar tf`, ModMenu) does not understand is a
+compatibility debt. The “magic marker” is therefore a file, not a byte sequence.
 
-## 10.2 Vollständige Verzeichnisstruktur des Containers
+## 10.2 Complete directory structure of the container
 
 ```
 examplemod-2.0.0-universal.jar
 │
 ├── META-INF/
 │   ├── MANIFEST.MF                       (1)
-│   ├── omni-container.json               (2)  ← Marker + Manifest
+│   ├── omni-container.json               (2)  ← marker + manifest
 │   └── jars/                             (3)
 │       ├── fabricmultiloader-runtime-1.0.0.jar
 │       ├── examplemod-mc1201.jar
 │       ├── examplemod-mc1211.jar
 │       └── examplemod-mc1214.jar
 │
-├── fabric.mod.json                       (4)  ← generiert
+├── fabric.mod.json                       (4)  ← generated
 │
-├── com/example/common/…                  (5)  ← Common-Bytecode (keine MC-Referenz)
+├── com/example/common/…                  (5)  ← common bytecode (no MC references)
 │   ├── ExampleMod.class
 │   ├── ExampleModClient.class
-│   ├── api/ExampleModApi.class                ← öffentliche API für Drittmods
+│   ├── api/ExampleModApi.class                ← public API for third-party mods
 │   └── config/ExampleConfig.class
 │
 ├── omni/                                 (6)
-│   ├── icon.png                                (Mod-Icon; NICHT unter assets/)
-│   ├── entrypoints.json                        (vom Annotation Processor, optional)
-│   └── common-resources/                       (nur bei commonPackaging=shared-debug)
+│   ├── icon.png                                (mod icon; NOT under assets/)
+│   ├── entrypoints.json                        (from the annotation processor, optional)
+│   └── common-resources/                       (only with commonPackaging=shared-debug)
 │
 └── LICENSE, NOTICE                       (7)
 ```
 
-### 10.3 Pfad-für-Pfad-Spezifikation
+### 10.3 Path-by-path specification
 
-| # | Pfad | Inhalt | Erzeuger | Lesezeitpunkt | Remappt? | Komprimiert | Auf Classpath | Konfliktvermeidung |
+| # | Path | Content | Produced by | Read at | Remapped? | Compressed | On the classpath | Conflict prevention |
 |---|---|---|---|---|---|---|---|---|
-| 1 | `META-INF/MANIFEST.MF` | `Manifest-Version`, `Implementation-Title/Version`, `Omni-Container-Format: omni/1`, `Omni-Manifest: META-INF/omni-container.json`, `Built-By: fabricmultiloader-gradle/<v>` | `assembleUniversalJar` | von Drittwerkzeugen; vom Loader ignoriert | nein | DEFLATE | ja (als Ressource) | Fester Schlüsselsatz, alphabetisch sortiert, ohne Zeitstempel |
-| 2 | `META-INF/omni-container.json` | Omni-Manifest (Kapitel 11) | `generateOmniManifest` | `ContainerPreLaunch` (Phase preLaunch); Validator; Slim-Jar-Generator | nein | DEFLATE | ja (Ressource) | Existiert genau einmal; Validator prüft Eindeutigkeit und Konsistenz zur `fabric.mod.json` |
-| 3 | `META-INF/jars/*.jar` | Runtime-Mod + Payload-Mods | `assembleUniversalJar` | Loader `ModDiscoverer` (nur `fabric.mod.json` daraus), später Extraktion des ausgewählten | Payloads: ja (nach `intermediary`); Runtime: n/a | **STORED** (siehe 10.5) | nein — JARs in JARs liegen nicht auf dem Classpath | Dateinamen sind `<payload.modId>.jar` bzw. `<artifact>-<version>.jar`; Validator erzwingt Eindeutigkeit und Übereinstimmung mit `jars[]` in `fabric.mod.json` |
-| 4 | `fabric.mod.json` | Container-Metadaten (Kapitel 11.8) | `generateContainerModJson` | Loader `ModDiscoverer` | nein | DEFLATE | ja (Ressource) | Handgeschriebene Version im Common-Modul ⇒ Build-Fehler `OMNI-1021` |
-| 5 | `com/example/common/**` | Common-Bytecode des Mods | `:common:jar` → Assembler | lazy beim ersten Gebrauch | nein (keine MC-Referenz) | DEFLATE | ja | Package-Präfix muss in `container.commonPackages` deklariert sein; Validator prüft, dass Container **nur** Klassen aus diesen Präfixen (+ `omni/`) enthält (`OMNI-1043`) |
-| 6a | `omni/icon.png` | Mod-Icon | Assembler (kopiert aus `common/src/main/omni/icon.png`) | ModMenu über `ModContainer#findPath` | nein | DEFLATE | ja | Liegt bewusst **nicht** unter `assets/`, damit der Container kein Resource-Pack wird (Kapitel 25.2) |
-| 6b | `omni/entrypoints.json` | Vom Annotation Processor erkannte Entrypoints | `:common:compileJava` (APT) | `generateOmniManifest` (Build-Zeit) | nein | DEFLATE | ja | Nur Build-Zeit-Input; Runtime liest ausschließlich das Manifest |
-| 7 | `LICENSE`, `NOTICE` | Rechtstexte | Assembler | — | nein | DEFLATE | ja | — |
+| 1 | `META-INF/MANIFEST.MF` | `Manifest-Version`, `Implementation-Title/Version`, `Omni-Container-Format: omni/1`, `Omni-Manifest: META-INF/omni-container.json`, `Built-By: fabricmultiloader-gradle/<v>` | `assembleUniversalJar` | by third-party tools; ignored by the loader | no | DEFLATE | yes (as a resource) | Fixed key set, alphabetically sorted, no timestamps |
+| 2 | `META-INF/omni-container.json` | The Omni manifest (chapter 11) | `generateOmniManifest` | `ContainerPreLaunch` (preLaunch phase); validator; slim-JAR generator | no | DEFLATE | yes (resource) | Exists exactly once; the validator checks uniqueness and consistency with `fabric.mod.json` |
+| 3 | `META-INF/jars/*.jar` | Runtime mod + payload mods | `assembleUniversalJar` | loader `ModDiscoverer` (only their `fabric.mod.json`), later extraction of the selected one | payloads: yes (to `intermediary`); runtime: n/a | **STORED** (see 10.5) | no — JARs inside JARs are not on the classpath | File names are `<payload.modId>.jar` resp. `<artifact>-<version>.jar`; the validator enforces uniqueness and agreement with `jars[]` in `fabric.mod.json` |
+| 4 | `fabric.mod.json` | Container metadata (chapter 11.8) | `generateContainerModJson` | loader `ModDiscoverer` | no | DEFLATE | yes (resource) | A hand-written version in the common module ⇒ build error `OMNI-1021` |
+| 5 | `com/example/common/**` | The mod's common bytecode | `:common:jar` → assembler | lazily on first use | no (no MC references) | DEFLATE | yes | The package prefix must be declared in `container.commonPackages`; the validator checks that the container contains **only** classes from those prefixes (+ `omni/`) (`OMNI-1043`) |
+| 6a | `omni/icon.png` | Mod icon | assembler (copied from `common/src/main/omni/icon.png`) | ModMenu via `ModContainer#findPath` | no | DEFLATE | yes | Deliberately **not** under `assets/`, so the container does not become a resource pack (chapter 25.2) |
+| 6b | `omni/entrypoints.json` | Entrypoints detected by the annotation processor | `:common:compileJava` (APT) | `generateOmniManifest` (build time) | no | DEFLATE | yes | Build-time input only; the runtime reads exclusively the manifest |
+| 7 | `LICENSE`, `NOTICE` | Legal texts | assembler | — | no | DEFLATE | yes | — |
 
-### 10.4 Verzeichnisstruktur eines Payloads
+### 10.4 Directory structure of a payload
 
 ```
-examplemod-mc1214.jar                        (im Container unter META-INF/jars/)
+examplemod-mc1214.jar                        (inside the container under META-INF/jars/)
 │
-├── fabric.mod.json                          ← generiert, deklariert depends/mixins/accessWidener
-├── omni/payload.json                        ← Payload-Deskriptor (Kapitel 11.9)
+├── fabric.mod.json                          ← generated, declares depends/mixins/accessWidener
+├── omni/payload.json                        ← payload descriptor (chapter 11.9)
 │
-├── com/example/mc1214/…                     ← Adapter-Bytecode, remappt (intermediary)
+├── com/example/mc1214/…                     ← adapter bytecode, remapped (intermediary)
 │   ├── Platform1214.class
 │   ├── Platform1214Factory.class
 │   └── mixin/ItemRendererMixin.class
 │
-├── examplemod-mc1214.mixins.json            ← common-side Mixins
-├── examplemod-mc1214.client.mixins.json     ← client-only Mixins
-├── examplemod-mc1214-refmap.json            ← von Loom/Mixin-AP erzeugt
-├── examplemod-mc1214.accesswidener          ← Namespace: intermediary
+├── examplemod-mc1214.mixins.json            ← common-side mixins
+├── examplemod-mc1214.client.mixins.json     ← client-only mixins
+├── examplemod-mc1214-refmap.json            ← produced by Loom/the Mixin AP
+├── examplemod-mc1214.accesswidener          ← namespace: intermediary
 │
-├── assets/examplemod/**                     ← common ⊕ version, gemergt (Kapitel 25)
-├── data/examplemod/**                       ← common ⊕ version ⊕ datagen, gemergt
+├── assets/examplemod/**                     ← common ⊕ version, merged (chapter 25)
+├── data/examplemod/**                       ← common ⊕ version ⊕ datagen, merged
 │
-└── META-INF/jars/                           ← versionsspezifische Bibliotheken
+└── META-INF/jars/                           ← version-specific libraries
     └── cloth-config-15.0.140.jar
 ```
 
-Payloads enthalten **keinen** Common-Bytecode (bei Default `commonPackaging = shared`) und **kein**
-`META-INF/omni-container.json` (Validator-Regel `OMNI-1022`, verhindert, dass ein Payload versehentlich als
-Container erkannt wird).
+Payloads contain **no** common bytecode (with the default `commonPackaging = shared`) and **no**
+`META-INF/omni-container.json` (validator rule `OMNI-1022`, preventing a payload from accidentally being detected
+as a container).
 
-## 10.5 Kompression und Reproduzierbarkeit
+## 10.5 Compression and reproducibility
 
-| Eintragstyp | Methode | Begründung |
+| Entry type | Method | Rationale |
 |---|---|---|
-| `META-INF/jars/*.jar` | **STORED** (unkomprimiert) | Bereits komprimierte ZIPs erneut zu deflaten kostet Build-Zeit und bringt < 1 %. Wichtiger: STORED erlaubt dem Loader, den Eintrag mit `Files.copy` direkt herauszuschreiben, und macht die Extraktion messbar schneller (~35 % in Messungen mit 4 Payloads à 2 MB). |
-| alle anderen Einträge | DEFLATE Level 9 | Kleinste Datei; Deflate-Ausgabe ist bei fester Bibliotheksversion deterministisch. Der Assembler pinnt daher `java.util.zip` (JDK des Toolchains) und schreibt die Toolchain-Version ins Manifest, damit Reproduzierbarkeit prüfbar ist. |
+| `META-INF/jars/*.jar` | **STORED** (uncompressed) | Re-deflating already-compressed ZIPs costs build time and gains < 1 %. More importantly, STORED lets the loader write the entry out with a plain `Files.copy` and makes extraction measurably faster (~35 % in measurements with four payloads of 2 MB each). |
+| all other entries | DEFLATE level 9 | Smallest file; deflate output is deterministic for a fixed library version. The assembler therefore pins `java.util.zip` (the toolchain JDK) and writes the toolchain version into the manifest so reproducibility is verifiable. |
 
-**Reproduzierbarkeitsregeln** (alle vom Assembler erzwungen, Validator-Regel `OMNI-1060`):
+**Reproducibility rules** (all enforced by the assembler, validator rule `OMNI-1060`):
 
-1. Alle ZIP-Einträge mit `lastModifiedTime = 1980-01-01T00:00:00Z` (kleinster in ZIP darstellbarer Wert).
-2. Einträge in lexikographischer Reihenfolge des Pfadnamens (UTF-8, byteweise), Verzeichniseinträge werden
-   überhaupt nicht geschrieben.
-3. Keine Zufalls- oder Zeitwerte in generierten Dateien. Das Feld `generator.timestamp` im Manifest wird auf
-   den **Commit-Zeitstempel** gesetzt, falls `SOURCE_DATE_EPOCH` oder `git` verfügbar ist, sonst auf
-   `1980-01-01T00:00:00Z`.
-4. JSON-Ausgabe: 2 Leerzeichen Einrückung, Schlüssel in **definierter** (nicht alphabetischer) Reihenfolge
-   gemäß Schema, `\n` als Zeilenende, UTF-8 ohne BOM, keine trailing whitespace.
-5. `preserveFileTimestamps = false`, `reproducibleFileOrder = true` an allen `Jar`/`Zip`-Tasks.
-6. Der Assembler protokolliert den SHA-256 der erzeugten Datei nach `build/reports/omni/universal-jar.sha256`.
+1. All ZIP entries with `lastModifiedTime = 1980-01-01T00:00:00Z` (the smallest value representable in ZIP).
+2. Entries in lexicographic order of the path name (UTF-8, byte-wise); directory entries are not written at all.
+3. No random or time values in generated files. The manifest field `generator.timestamp` is set to the **commit
+   timestamp** if `SOURCE_DATE_EPOCH` or `git` is available, otherwise to `1980-01-01T00:00:00Z`.
+4. JSON output: two-space indentation, keys in the **defined** (not alphabetical) order per the schema, `\n` line
+   endings, UTF-8 without BOM, no trailing whitespace.
+5. `preserveFileTimestamps = false`, `reproducibleFileOrder = true` on all `Jar`/`Zip` tasks.
+6. The assembler logs the SHA-256 of the produced file to `build/reports/omni/universal-jar.sha256`.
 
-## 10.6 „Magic Marker“ und Erkennung durch Drittwerkzeuge
+## 10.6 “Magic marker” and detection by third-party tools
 
-Ein Werkzeug erkennt einen Omni-Container an genau zwei Merkmalen, die beide vorhanden sein müssen:
+A tool recognises an Omni container by exactly two characteristics, both of which must be present:
 
-1. ZIP-Eintrag `META-INF/omni-container.json` existiert und beginnt (nach optionalem Whitespace) mit
-   `{"formatId":"omni/` — die ersten Bytes sind damit ein stabiler, textueller Marker.
-2. `META-INF/MANIFEST.MF` enthält `Omni-Container-Format: omni/1`.
+1. The ZIP entry `META-INF/omni-container.json` exists and starts (after optional whitespace) with
+   `{"formatId":"omni/` — the first bytes are therefore a stable, textual marker.
+2. `META-INF/MANIFEST.MF` contains `Omni-Container-Format: omni/1`.
 
-Die Erkennung ist damit ohne JSON-Parser möglich (Byte-Prefix-Vergleich) und ohne ZIP-Zentralverzeichnis-Scan
-nicht fälschbar. Ein reguläres Fabric-Mod-JAR ohne diese Merkmale ist definitionsgemäß kein Omni-Container.
+Detection is thus possible without a JSON parser (byte prefix comparison) and cannot be faked without a ZIP central
+directory scan. A regular Fabric mod JAR without these characteristics is by definition not an Omni container.
 
-## 10.7 Checksummen-Modell
+## 10.7 Checksum model
 
-| Ebene | Feld | Zweck |
+| Level | Field | Purpose |
 |---|---|---|
-| Payload-Datei | `payloads[].sha256`, `payloads[].size` | Integritätsprüfung beim Start (`OMNI-2013`), Erkennung manipulierter/abgeschnittener Downloads |
-| Payload-Ressourcen | `payloads[].resourcesDigest` | SHA-256 über die sortierte Liste `path + ":" + sha256(content)` aller `assets/**` und `data/**` — erkennt Ressourcen-Drift zwischen Payloads (Validator `OMNI-1070`, nur Warnung) |
-| Container | Sidecar `<jar>.sha256` | Release-Artefakt für Modrinth/CurseForge und Reproduzierbarkeitsprüfung |
-| Runtime-Mod | `container.runtime.sha256` | Erkennt, ob eine fremde Runtime-Version eingebettet wurde |
+| Payload file | `payloads[].sha256`, `payloads[].size` | Integrity check at startup (`OMNI-2013`), detection of tampered/truncated downloads |
+| Payload resources | `payloads[].resourcesDigest` | SHA-256 over the sorted list `path + ":" + sha256(content)` of all `assets/**` and `data/**` — detects resource drift between payloads (validator `OMNI-1070`, warning only) |
+| Container | sidecar `<jar>.sha256` | Release artifact for Modrinth/CurseForge and reproducibility checking |
+| Runtime mod | `container.runtime.sha256` | Detects whether a foreign runtime version was embedded |
 
-Es gibt **keine** kryptografischen Signaturen im Format. Begründung: Ein Signaturschema ohne
-Schlüsselverteilungs- und Widerrufsinfrastruktur erzeugt Scheinsicherheit; Mods sind ohnehin beliebiger
-ausführbarer Code, und die Vertrauensgrenze liegt bei der Distributionsplattform. Das Format ist jedoch
-vorbereitet: `container.signatures` ist als reserviertes Feld definiert (Kapitel 11.6) und wird von v1-Readern
-ignoriert.
+There are **no** cryptographic signatures in the format. Rationale: a signature scheme without key distribution and
+revocation infrastructure produces the appearance of security; mods are arbitrary executable code anyway, and the
+trust boundary lies with the distribution platform. The format is prepared for it nevertheless:
+`container.signatures` is defined as a reserved field (chapter 11.6) and is ignored by v1 readers.
 
 ---
 
 # 11. Metadata Schema
 
-## 11.1 Übersicht der Metadatendateien
+## 11.1 Overview of the metadata files
 
-| Datei | Ort | Autorität für | Gelesen von |
+| File | Location | Authoritative for | Read by |
 |---|---|---|---|
-| `META-INF/omni-container.json` | Container | Payload-Liste, Constraints, Entrypoints, Diagnose-URLs | Runtime, Validator, Slim-Jar-Generator |
-| `omni/payload.json` | jedes Payload | Selbstbeschreibung des Payloads + Kopie der Container-Identität (Dev-Fallback) | Runtime (nur im Dev-Fallback), Validator, Debugging |
-| `fabric.mod.json` (Container) | Container | Loader-Sicht auf die Mod | Fabric Loader |
-| `fabric.mod.json` (Payload) | jedes Payload | Loader-Sicht auf das Payload, **inkl. Auswahl-Constraints** | Fabric Loader |
-| `gradle/fabricmultiloader.toml` | Projektquelle | Wahrheitsquelle im Build | Gradle-Plugins |
+| `META-INF/omni-container.json` | container | payload list, constraints, entrypoints, diagnostic URLs | runtime, validator, slim-JAR generator |
+| `omni/payload.json` | every payload | the payload's self-description + a copy of the container identity (dev fallback) | runtime (only in the dev fallback), validator, debugging |
+| `fabric.mod.json` (container) | container | the loader's view of the mod | Fabric Loader |
+| `fabric.mod.json` (payload) | every payload | the loader's view of the payload, **including the selection constraints** | Fabric Loader |
+| `gradle/fabricmultiloader.toml` | project source | source of truth in the build | Gradle plugins |
 
-**Kritisch:** Die Auswahl trifft der Loader anhand der **Payload-`fabric.mod.json`**. Das Omni-Manifest ist die
-*Erklärung* derselben Constraints für Diagnose und Validierung. Beide werden aus derselben Quelle generiert;
-der Validator prüft ihre Äquivalenz (`OMNI-1011`) — Divergenz ist ein Build-Fehler, nicht ein Runtime-Problem.
+**Critical:** the selection is made by the loader based on the **payload `fabric.mod.json`**. The Omni manifest is
+the *explanation* of the same constraints for diagnostics and validation. Both are generated from the same source;
+the validator checks their equivalence (`OMNI-1011`) — divergence is a build error, not a runtime problem.
 
-## 11.2 `META-INF/omni-container.json` — vollständiges Schema
+## 11.2 `META-INF/omni-container.json` — complete schema
 
 ```json
 {
@@ -238,86 +234,86 @@ der Validator prüft ihre Äquivalenz (`OMNI-1011`) — Divergenz ist ein Build-
 }
 ```
 
-## 11.3 Feldsemantik — `container`
+## 11.3 Field semantics — `container`
 
-| Feld | Typ | Pflicht | Semantik |
+| Field | Type | Required | Semantics |
 |---|---|---|---|
-| `modId` | string, Fabric-ID-Regex | ja | Muss der ID der tragenden Mod entsprechen (`OMNI-2012`). |
-| `modVersion` | SemVer-String | ja | Nach außen sichtbare Modversion. |
-| `displayName` | string | ja | Für Logs und Fehlermeldungen. |
-| `commonPackages` | string[] | ja | Erlaubte Package-Präfixe im Container. Validator lehnt Container-Klassen außerhalb ab. Mindestens ein Eintrag. |
-| `commonPackaging` | `"shared"` \| `"embedded"` | ja | `shared`: Common liegt nur im Container (Default). `embedded`: Common wird zusätzlich in **jedes** Payload kopiert; der Container enthält es dann nicht. Fallback-Modus für den hypothetischen Fall, dass ein künftiger Loader Mods klassenmäßig isoliert (Kapitel 41.3). |
-| `baselineJavaMajor` | int | ja | Ziel-Classfile-Level des Containers; Validator prüft jede Container-Klasse. |
-| `runtime` | object | ja | Identität, Version, Range, Pfad und Hash der eingebetteten Runtime-Mod. |
-| `minRuntime` | SemVer | ja | Kleinste Runtime-Version, die dieses Manifest korrekt interpretieren kann. Ältere Runtime bricht mit `OMNI-2002` ab. |
-| `payloadAlias` | Fabric-ID | ja | Alias, den **alle** Payloads via `provides` bereitstellen. Erzwingt Exklusivität im Solver. |
-| `strict` | bool | ja | Default-Verhalten bei „kein Payload“: `true` = Abbruch, `false` = Warnung. Überschreibbar per `-Dfabricmultiloader.strict`. |
-| `verifyIntegrity` | bool | ja | SHA-256-Prüfung des aktiven Payloads beim Start. Default `true`; per `-Dfabricmultiloader.verify=false` abschaltbar (Debug/Modpack-Repack). |
+| `modId` | string, Fabric ID regex | yes | Must equal the ID of the carrying mod (`OMNI-2012`). |
+| `modVersion` | SemVer string | yes | The externally visible mod version. |
+| `displayName` | string | yes | For logs and error messages. |
+| `commonPackages` | string[] | yes | Permitted package prefixes in the container. The validator rejects container classes outside them. At least one entry. |
+| `commonPackaging` | `"shared"` \| `"embedded"` | yes | `shared`: common lives only in the container (default). `embedded`: common is additionally copied into **every** payload; the container then does not contain it. A fallback mode for the hypothetical case that a future loader isolates mods by class (chapter 41.3). |
+| `baselineJavaMajor` | int | yes | The container's target class file level; the validator checks every container class. |
+| `runtime` | object | yes | Identity, version, range, path and hash of the embedded runtime mod. |
+| `minRuntime` | SemVer | yes | The lowest runtime version able to interpret this manifest correctly. An older runtime aborts with `OMNI-2002`. |
+| `payloadAlias` | Fabric ID | yes | The alias that **all** payloads provide via `provides`. Enforces exclusivity in the solver. |
+| `strict` | bool | yes | Default behaviour on “no payload”: `true` = abort, `false` = warn. Overridable via `-Dfabricmultiloader.strict`. |
+| `verifyIntegrity` | bool | yes | SHA-256 check of the active payload at startup. Default `true`; disableable via `-Dfabricmultiloader.verify=false` (debug/modpack repack). |
 
-## 11.4 Feldsemantik — `payloads[]`
+## 11.4 Field semantics — `payloads[]`
 
-| Feld | Typ | Pflicht | Semantik |
+| Field | Type | Required | Semantics |
 |---|---|---|---|
-| `id` | `^[a-z][a-z0-9]{1,31}$` | ja | Kurz-ID, projektintern eindeutig; erscheint in Logs, Task-Namen und Verzeichnisnamen. Konvention: `mc` + kompakte MC-Version (`mc1201`, `mc1214`, `mc262`). |
-| `modId` | Fabric-ID | ja | `<container.modId>-<id>`. |
-| `modVersion` | SemVer | ja | `<container.modVersion>+mc<mcVersion>`; Build-Metadata ist vergleichsneutral. |
-| `file` | Pfad im Container | ja | Muss in `fabric.mod.json.jars[]` enthalten sein. |
-| `sha256`, `size` | string, int | ja | Integrität. |
-| `classfileMajor` | int | ja | Erwarteter Classfile-Major aller Payload-Klassen. |
-| `priority` | int | ja | Nur Build-Zeit-Semantik: Reihenfolge der Range-Subtraktion (Kapitel 12.7). Höher = gewinnt Überlappungen. Default 0. |
-| `platformFactory` | FQCN | ja | Klasse mit öffentlichem, parameterlosem Konstruktor, implementiert `PlatformFactory`. |
-| `packages` | string[] | ja | Package-Präfixe des Payloads; Validator prüft Einhaltung und Nichtüberlappung mit `commonPackages` und anderen Payloads. |
-| `requires.minecraft` | Predicate[] | ja | OR-verknüpft. Mindestens ein Element. |
-| `requires.fabricloader` | Predicate[] | ja | |
-| `requires.java` | Predicate[] | ja | Vergleich gegen `<javaMajor>.0.0`. |
-| `requires.environment` | `"*"`/`"client"`/`"server"` | ja | Physische Seite. |
-| `requires.mods` | Map<ID, Predicate[]> | ja (ggf. leer) | Harte Fremdabhängigkeiten ⇒ landen in `depends`. |
-| `requires.optionalMods` | Map<ID, Predicate[]> | ja (ggf. leer) | Weiche Abhängigkeiten ⇒ landen in `recommends`/`suggests`, werden im Diagnosebericht ausgewiesen, beeinflussen die Auswahl **nicht**. |
-| `provides` | string[] | ja | Enthält immer `container.payloadAlias`. |
-| `breaks` | string[] | ja | Alle anderen Payload-Mod-IDs. |
-| `mappings` | object | ja | Dokumentation und Validierung (AW-Namespace-Prüfung). |
-| `mixins` | `{config, environment}[]` | ja (ggf. leer) | Muss zeichengenau der Payload-`fabric.mod.json` entsprechen. |
-| `refmaps` | string[] | ja (ggf. leer) | Vom Validator gegen die Mixin-Configs geprüft. |
-| `accessWidener` | string \| null | ja | Pfad im Payload oder `null`. |
-| `nestedJars` | string[] | ja (ggf. leer) | Bibliotheken innerhalb des Payloads. |
-| `resourcesDigest` | string | ja | s. 10.7. |
-| `capabilities` | string[] | ja | Von diesem Payload implementierte `Capability`-IDs (Kapitel 19.6). Diagnose + `ctx.capability()`-Vorprüfung. |
+| `id` | `^[a-z][a-z0-9]{1,31}$` | yes | Short ID, unique within the project; appears in logs, task names and directory names. Convention: `mc` + compact MC version (`mc1201`, `mc1214`, `mc261`). |
+| `modId` | Fabric ID | yes | `<container.modId>-<id>`. |
+| `modVersion` | SemVer | yes | `<container.modVersion>+mc<mcVersion>`; build metadata is comparison-neutral. |
+| `file` | path in the container | yes | Must be listed in `fabric.mod.json.jars[]`. |
+| `sha256`, `size` | string, int | yes | Integrity. |
+| `classfileMajor` | int | yes | Expected class file major of all payload classes. |
+| `priority` | int | yes | Build-time semantics only: the order of range subtraction (chapter 12.7). Higher wins overlaps. Default 0. |
+| `platformFactory` | FQCN | yes | A class with a public no-argument constructor implementing `PlatformFactory`. |
+| `packages` | string[] | yes | The payload's package prefixes; the validator checks adherence and non-overlap with `commonPackages` and other payloads. |
+| `requires.minecraft` | predicate[] | yes | OR-combined. At least one element. |
+| `requires.fabricloader` | predicate[] | yes | |
+| `requires.java` | predicate[] | yes | Compared against `<javaMajor>.0.0`. |
+| `requires.environment` | `"*"`/`"client"`/`"server"` | yes | The physical side. |
+| `requires.mods` | Map<ID, predicate[]> | yes (may be empty) | Hard foreign dependencies ⇒ land in `depends`. |
+| `requires.optionalMods` | Map<ID, predicate[]> | yes (may be empty) | Soft dependencies ⇒ land in `recommends`/`suggests`, are reported in the diagnostic report, and do **not** influence selection. |
+| `provides` | string[] | yes | Always contains `container.payloadAlias`. |
+| `breaks` | string[] | yes | All other payload mod IDs. |
+| `mappings` | object | yes | Documentation and validation (AW namespace check). |
+| `mixins` | `{config, environment}[]` | yes (may be empty) | Must match the payload `fabric.mod.json` character for character. |
+| `refmaps` | string[] | yes (may be empty) | Checked by the validator against the mixin configs. |
+| `accessWidener` | string \| null | yes | Path inside the payload, or `null`. |
+| `nestedJars` | string[] | yes (may be empty) | Libraries inside the payload. |
+| `resourcesDigest` | string | yes | See 10.7. |
+| `capabilities` | string[] | yes | The `Capability` IDs implemented by this payload (chapter 19.6). Diagnostics + a pre-check for `ctx.capability()`. |
 
-## 11.5 Kanonische Reihenfolge und Validierung
+## 11.5 Canonical ordering and validation
 
-* Schlüsselreihenfolge im JSON ist **normativ** in der Reihenfolge dieses Kapitels (nicht alphabetisch) —
-  erforderlich für Reproduzierbarkeit und für lesbare Diffs im Git-Review von Release-Artefakten.
-* `payloads[]` ist sortiert nach `priority` **absteigend**, dann `id` aufsteigend.
-* Unbekannte Felder: **Reader ignorieren sie** (Forward-Compat), **Validator lehnt sie ab** (`OMNI-1002`), denn
-  im eigenen Build darf nichts Unbekanntes entstehen.
-* Fehlende Pflichtfelder: `OMNI-3001` mit JSON-Pointer (`/payloads/2/requires/minecraft`).
-* Typfehler: `OMNI-3002` mit Pointer, erwartetem und tatsächlichem Typ.
+* The key order in the JSON is **normative** and follows the order of this chapter (not alphabetical) — required
+  for reproducibility and for readable diffs when reviewing release artifacts in git.
+* `payloads[]` is sorted by `priority` **descending**, then `id` ascending.
+* Unknown fields: **readers ignore them** (forward compatibility), **the validator rejects them** (`OMNI-1002`),
+  because nothing unknown may arise in one's own build.
+* Missing required fields: `OMNI-3001` with a JSON pointer (`/payloads/2/requires/minecraft`).
+* Type errors: `OMNI-3002` with pointer, expected and actual type.
 
-## 11.6 Reservierte Felder
+## 11.6 Reserved fields
 
-`container.signatures`, `container.experiments`, `payloads[].experiments`. Reader von `omni/1` ignorieren sie;
-der Validator erlaubt sie nur, wenn `-Pomni.experiments=true` gesetzt ist. Damit ist ein Erweiterungspfad
-definiert, ohne die Schemaversion zu erhöhen.
+`container.signatures`, `container.experiments`, `payloads[].experiments`. Readers of `omni/1` ignore them; the
+validator permits them only when `-Pomni.experiments=true` is set. This defines an extension path without raising
+the schema version.
 
-## 11.7 Parser-Implementierung
+## 11.7 Parser implementation
 
-`dev.fabricmultiloader.format.json` enthält einen 400-Zeilen-JSON-Parser (RFC 8259, ohne Kommentare, ohne
-trailing commas) mit:
+`dev.fabricmultiloader.format.json` contains a 400-line JSON parser (RFC 8259, no comments, no trailing commas)
+with:
 
-* `JsonValue` als versiegelte Klassenhierarchie (`JsonObject`, `JsonArray`, `JsonString`, `JsonNumber`,
-  `JsonBool`, `JsonNull`) — Java-8-kompatibel über abstrakte Klasse + package-private Konstruktoren.
-* **Positionsverfolgung**: Jeder Wert kennt Zeile/Spalte; Fehlermeldungen zitieren die Quellzeile mit
-  Caret-Markierung.
-* Eingabelimits gegen Denial-of-Service durch manipulierte Manifeste: max. 1 MiB Dokumentgröße, max. 64
-  Verschachtelungstiefe, max. 4096 Objekt-Einträge, max. 65536 Zeichen pro String. Überschreitung ⇒ `OMNI-3003`.
-* Determiniertes Schreiben (`JsonWriter`) mit der normativen Schlüsselreihenfolge.
+* `JsonValue` as a sealed class hierarchy (`JsonObject`, `JsonArray`, `JsonString`, `JsonNumber`, `JsonBool`,
+  `JsonNull`) — Java-8-compatible via an abstract class plus package-private constructors.
+* **Position tracking**: every value knows its line/column; error messages quote the source line with a caret
+  marker.
+* Input limits against denial of service via tampered manifests: max 1 MiB document size, max 64 nesting levels,
+  max 4096 object entries, max 65536 characters per string. Exceeding them ⇒ `OMNI-3003`.
+* Deterministic writing (`JsonWriter`) with the normative key order.
 
-Begründung gegen Gson: Gson im Container würde entweder geshaded (FQCN-Kollision mit Minecraft-eigenem Gson,
-`ClassLoader`-First-Wins-Problem) oder als weitere JiJ-Mod ausgeliefert. Minecrafts Gson ist verfügbar, aber
-seine Version schwankt und ist in `preLaunch` auf 1.16.5 noch nicht garantiert initialisiert. Ein eigener
-Parser kostet ~9 KB und beseitigt die Frage vollständig.
+Rationale against Gson: Gson in the container would either be shaded (FQCN collision with Minecraft's own Gson,
+classloader first-wins problem) or shipped as another JiJ mod. Minecraft's Gson is available, but its version
+fluctuates and it is not guaranteed to be initialised during `preLaunch` on 1.16.5. A custom parser costs ~9 KB and
+eliminates the question entirely.
 
-## 11.8 Generierung der Container-`fabric.mod.json`
+## 11.8 Generating the container `fabric.mod.json`
 
 ```json
 {
@@ -325,7 +321,7 @@ Parser kostet ~9 KB und beseitigt die Frage vollständig.
   "id": "examplemod",
   "version": "2.0.0",
   "name": "Universal Example Mod",
-  "description": "Ein Beispiel für FabricMultiLoader. Unterstützt Minecraft 1.20.1, 1.21–1.21.1 und 1.21.4.",
+  "description": "An example for FabricMultiLoader. Supports Minecraft 1.20.1, 1.21–1.21.1 and 1.21.4.",
   "authors": ["Example Author"],
   "contact": {
     "homepage": "https://example.github.io/examplemod/",
@@ -366,30 +362,30 @@ Parser kostet ~9 KB und beseitigt die Frage vollständig.
 }
 ```
 
-**Ableitungsregeln (alle deterministisch aus Matrix + DSL):**
+**Derivation rules (all deterministic from the matrix + DSL):**
 
-| Feld | Ableitung |
+| Field | Derivation |
 |---|---|
-| `id`, `version`, `name`, `description`, `authors`, `contact`, `license` | aus `fabricMultiLoader { mod { … } }` |
-| `icon` | fest `omni/icon.png`, wenn die Datei existiert; sonst weggelassen |
-| `environment` | `*`, außer **alle** Payloads sind `client` bzw. `server` — dann entsprechend |
-| `entrypoints` | ausschließlich `preLaunch` → `ContainerPreLaunch`. Der Container hat **keine** `main`/`client`/`server`-Entrypoints; diese liegen im Payload (Begründung: 9.7 Dev-Fallback + korrekte Reihenfolge) |
-| `jars` | Runtime + alle Payloads, sortiert: Runtime zuerst, dann Payloads nach `id` |
-| `depends.fabricloader` | Maximum der Payload-`fabricloader`-Mindestversionen |
-| `depends.java` | **Minimum** der Payload-`java`-Mindestversionen (der Container muss auf der ältesten JVM laufen) |
+| `id`, `version`, `name`, `description`, `authors`, `contact`, `license` | from `fabricMultiLoader { mod { … } }` |
+| `icon` | fixed `omni/icon.png` if the file exists; otherwise omitted |
+| `environment` | `*`, unless **all** payloads are `client` resp. `server` — then set accordingly |
+| `entrypoints` | exclusively `preLaunch` → `ContainerPreLaunch`. The container has **no** `main`/`client`/`server` entrypoints; those live in the payload (rationale: 9.7 dev fallback + correct ordering) |
+| `jars` | runtime + all payloads, sorted: runtime first, then payloads by `id` |
+| `depends.fabricloader` | maximum of the payloads' minimum `fabricloader` versions |
+| `depends.java` | **minimum** of the payloads' minimum `java` versions (the container must run on the oldest JVM) |
 | `depends.fabricmultiloader` | `>=<runtimeVersion> <<nextMajor>` |
-| `depends.minecraft` | Union der Payload-MC-Ranges, als Array normalisiert und zusammengefasst (Kapitel 12.8) |
-| `recommends.fabric-api` | `*`, falls mindestens ein Payload Fabric API benötigt — nicht `depends`, weil die konkrete Mindestversion pro Payload variiert und dort hart deklariert ist |
-| `conflicts`/`breaks` | aus `fabricMultiLoader { mod { conflicts(...) } }`, unverändert übernommen |
-| `custom.omni` | generiert, dient Drittwerkzeugen als Schnellinfo ohne Manifest-Parse |
+| `depends.minecraft` | union of the payload MC ranges, normalised and merged into an array (chapter 12.8) |
+| `recommends.fabric-api` | `*` if at least one payload needs Fabric API — not `depends`, because the concrete minimum version varies per payload and is declared hard there |
+| `conflicts`/`breaks` | from `fabricMultiLoader { mod { conflicts(...) } }`, taken over unchanged |
+| `custom.omni` | generated; gives third-party tools a quick overview without parsing the manifest |
 
-**Warum keine harte `depends` auf den `payloadAlias`?** Eine solche Abhängigkeit würde im Fall „MC unterstützt,
-aber Fabric API zu alt“ zu der Loader-Meldung *„requires examplemod-impl 2.0.0 which is missing“* führen — eine
-sinnlose Meldung für Spieler. Ohne diese Abhängigkeit lädt der Container, und unsere `preLaunch`-Diagnose kann
-den echten Grund nennen. Das ist eine bewusste Verschiebung der Fehlermeldung von „technisch korrekt, unlesbar“
-zu „inhaltlich korrekt, lesbar“ (ADR-007).
+**Why no hard `depends` on the `payloadAlias`?** Such a dependency would, in the case “MC supported but Fabric API
+too old”, produce the loader message *“requires examplemod-impl 2.0.0 which is missing”* — a meaningless message
+for players. Without that dependency the container loads, and our `preLaunch` diagnostics can state the real
+reason. This is a deliberate shift of the error message from “technically correct, unreadable” to “substantively
+correct, readable” (ADR-007).
 
-## 11.9 Generierung der Payload-`fabric.mod.json`
+## 11.9 Generating the payload `fabric.mod.json`
 
 ```json
 {
@@ -397,7 +393,7 @@ zu „inhaltlich korrekt, lesbar“ (ADR-007).
   "id": "examplemod-mc1214",
   "version": "2.0.0+mc1.21.4",
   "name": "Universal Example Mod (Minecraft 1.21.4)",
-  "description": "Minecraft-1.21.4-Implementierung von Universal Example Mod. Wird von FabricMultiLoader automatisch ausgewählt.",
+  "description": "Minecraft 1.21.4 implementation of Universal Example Mod. Selected automatically by FabricMultiLoader.",
   "authors": ["Example Author"],
   "license": "MIT",
   "environment": "*",
@@ -434,16 +430,16 @@ zu „inhaltlich korrekt, lesbar“ (ADR-007).
 }
 ```
 
-Wesentliche Punkte:
+Key points:
 
-* `depends.examplemod = "=2.0.0"` — exakte Bindung an den Container. Erzwingt Ladereihenfolge
-  (Container-Entrypoints zuerst) und verhindert, dass ein Payload aus Version 2.0.0 mit einem Container 2.1.0
-  gemischt wird (etwa durch manuelles Kopieren aus `.fabric/processedMods`).
-* `provides` + `breaks` liefern zusammen die Exklusivität (I2).
-* `custom.modmenu.parent` + `badges` sorgen dafür, dass ModMenu das Payload als Kind der Hauptmod mit
-  Library-Kennzeichnung anzeigt statt als eigenständigen Eintrag.
-* `environment` wird auf `client`/`server` gesetzt, wenn das Payload in der Matrix so deklariert ist; dann
-  entfällt die Server-Extraktion eines Client-Payloads vollständig.
+* `depends.examplemod = "=2.0.0"` — an exact binding to the container. It enforces load ordering (container
+  entrypoints first) and prevents a payload from version 2.0.0 being mixed with a 2.1.0 container (e.g. by manually
+  copying files out of `.fabric/processedMods`).
+* `provides` + `breaks` together deliver exclusivity (I2).
+* `custom.modmenu.parent` + `badges` make ModMenu display the payload as a child of the main mod with a library
+  badge instead of as a standalone entry.
+* `environment` is set to `client`/`server` when the payload is declared that way in the matrix; server extraction
+  of a client payload is then avoided entirely.
 
 ## 11.10 `omni/payload.json`
 
@@ -479,94 +475,93 @@ Wesentliche Punkte:
 }
 ```
 
-Zweck: (a) Dev-Fallback ohne Container (9.7), (b) Slim-Jar-Erzeugung, (c) Selbstbeschreibung für Debugging,
-(d) Runtime-Kreuzprüfung gegen das Container-Manifest (`OMNI-2011` bei Divergenz).
+Purpose: (a) the dev fallback without a container (9.7), (b) slim-JAR generation, (c) self-description for
+debugging, (d) a runtime cross-check against the container manifest (`OMNI-2011` on divergence).
 
 ---
 
 # 12. Version Resolver
 
-## 12.1 Zwei Resolver, eine Semantik
+## 12.1 Two resolvers, one semantics
 
-| Resolver | Ort | Rolle |
+| Resolver | Location | Role |
 |---|---|---|
-| **Fabric `ModSolver`** | Loader, Phase 2.3c | trifft die tatsächliche Auswahl |
-| **`PayloadResolver`** in `fabricmultiloader-format` | Build-Zeit (Validator, Assembler) **und** Laufzeit (Diagnose) | beweist Disjunktheit, berechnet Container-Ranges, erklärt Ablehnungen |
+| **Fabric `ModSolver`** | loader, phase 2.3c | makes the actual selection |
+| **`PayloadResolver`** in `fabricmultiloader-format` | build time (validator, assembler) **and** runtime (diagnostics) | proves disjointness, computes container ranges, explains rejections |
 
-Beide müssen **identisch** urteilen. Das wird erreicht, indem `PayloadResolver` genau die Teilmenge der
-Fabric-Predicate-Syntax implementiert, die der Generator ausgibt (`=`, `>=`, `>`, `<=`, `<`, `*`, Arrays als OR,
-Leerzeichen als AND), und diese Äquivalenz durch **differenzielle Tests gegen die echte Loader-Klasse**
-`net.fabricmc.loader.api.metadata.version.VersionPredicate` in `format`-Tests abgesichert wird
-(`VersionPredicateEquivalenceTest`, 4096 generierte Zufallsfälle pro Loader-Version der Matrix).
+Both must judge **identically**. That is achieved by having `PayloadResolver` implement exactly the subset of the
+Fabric predicate syntax that the generator emits (`=`, `>=`, `>`, `<=`, `<`, `*`, arrays as OR, spaces as AND), and
+by guarding that equivalence with **differential tests against the real loader class**
+`net.fabricmc.loader.api.metadata.version.VersionPredicate` in the `format` tests
+(`VersionPredicateEquivalenceTest`, 4096 generated random cases per loader version in the matrix).
 
-## 12.2 Versionsmodell
+## 12.2 Version model
 
 ```java
 package dev.fabricmultiloader.format.version;
 
 public final class SemVer implements Comparable<SemVer> {
     private final int major, minor, patch;
-    private final String[] prerelease;   // leer = Release
-    private final String build;          // nach '+', vergleichsneutral
+    private final String[] prerelease;   // empty = release
+    private final String build;          // after '+', comparison-neutral
 
-    public static SemVer parse(String s);        // strikt, wirft FormatException
-    public static SemVer parseLenient(String s); // toleriert "1.21", "26.2", "1.21.4-rc1"
-    public static final SemVer UNKNOWN;          // 0.0.0-unknown, kleiner als alles
+    public static SemVer parse(String s);        // strict, throws FormatException
+    public static SemVer parseLenient(String s); // tolerates "1.21", "26.2", "1.21.4-rc1"
+    public static final SemVer UNKNOWN;          // 0.0.0-unknown, lower than everything
 }
 ```
 
-**`parseLenient`-Normalisierungsregeln** (vollständig, deterministisch, getestet):
+**`parseLenient` normalisation rules** (complete, deterministic, tested):
 
-| Eingabe | Ergebnis | Regel |
+| Input | Result | Rule |
 |---|---|---|
-| `1.20.1` | `1.20.1` | Standard |
-| `1.21` | `1.21.0` | fehlende Komponenten = 0 |
-| `26.2` | `26.2.0` | dito; deckt künftige Mojang-Schemata ab |
-| `1.21.5-alpha.24.45.a` | major 1, minor 21, patch 5, pre `[alpha,24,45,a]` | Fabrics Snapshot-Normalform |
-| `1.21.4-rc.1` | pre `[rc,1]` | Release Candidate |
-| `1.21.4-pre1` | pre `[pre1]` | ältere Fabric-Normalform |
-| `1.20.1+build.10` | build `build.10`, vergleichsneutral | |
-| `21.0.4` (Java) | `21.0.4` | Java-Version |
-| `21` (Java-Major) | `21.0.0` | |
-| `1.8.0_402` | `8.0.402` | Java-8-Sonderfall: führende `1.` entfernt, `_` → `.` |
-| `0.16.9` | `0.16.9` | Loader |
-| beliebig unparsbar | `UNKNOWN` (nur `parseLenient`) + Warnung `OMNI-3010` | niemals Exception im Bootstrap |
+| `1.20.1` | `1.20.1` | standard |
+| `1.21` | `1.21.0` | missing components = 0 |
+| `26.2` | `26.2.0` | ditto; covers future Mojang schemes |
+| `1.21.5-alpha.24.45.a` | major 1, minor 21, patch 5, pre `[alpha,24,45,a]` | Fabric's snapshot normal form |
+| `1.21.4-rc.1` | pre `[rc,1]` | release candidate |
+| `1.21.4-pre1` | pre `[pre1]` | older Fabric normal form |
+| `1.20.1+build.10` | build `build.10`, comparison-neutral | |
+| `21.0.4` (Java) | `21.0.4` | Java version |
+| `21` (Java major) | `21.0.0` | |
+| `1.8.0_402` | `8.0.402` | Java 8 special case: leading `1.` removed, `_` → `.` |
+| `0.16.9` | `0.16.9` | loader |
+| anything unparseable | `UNKNOWN` (only in `parseLenient`) + warning `OMNI-3010` | never an exception in the bootstrap |
 
-Vergleich: numerisch nach major/minor/patch; Prerelease < Release; Prerelease-Komponenten nach SemVer-2.0.0-Regeln
-(numerisch vor alphanumerisch, numerische Vergleiche numerisch); `build` wird ignoriert.
+Comparison: numerically by major/minor/patch; prerelease < release; prerelease components per SemVer 2.0.0 rules
+(numeric before alphanumeric, numeric comparisons numeric); `build` is ignored.
 
-## 12.3 Predicates und Ranges
+## 12.3 Predicates and ranges
 
 ```java
 public interface VersionPredicate {
     boolean test(SemVer v);
-    Interval asInterval();                    // für Range-Algebra
-    String canonical();                       // stabile Textform für Generierung
+    Interval asInterval();                    // for range algebra
+    String canonical();                       // stable textual form for generation
 }
 
-public final class Interval {                 // halboffen: [min, max)
+public final class Interval {                 // half-open: [min, max)
     final SemVer min; final boolean minInclusive;
-    final SemVer max; final boolean maxInclusive;   // max == null ⇒ unbeschränkt
+    final SemVer max; final boolean maxInclusive;   // max == null ⇒ unbounded
 }
 
-public final class VersionRange {             // Union disjunkter, sortierter Intervalle
+public final class VersionRange {             // union of disjoint, sorted intervals
     public static VersionRange parse(String... predicates);   // OR
     public boolean test(SemVer v);
     public VersionRange union(VersionRange o);
     public VersionRange intersect(VersionRange o);
     public VersionRange subtract(VersionRange o);
     public boolean isEmpty();
-    public List<String> toPredicates();       // kanonische Fabric-Predicate-Liste
+    public List<String> toPredicates();       // canonical Fabric predicate list
 }
 ```
 
-`VersionRange` ist als **sortierte Liste disjunkter halboffener Intervalle** implementiert. Union, Intersect und
-Subtract sind exakte Intervalloperationen — kein Sampling, keine Heuristik. Prerelease-Grenzen werden korrekt
-behandelt, indem `1.21.4` als `1.21.4-∅` (nach allen Prereleases) und die künstliche Untergrenze `1.21.4-`
-als „inklusive aller Prereleases von 1.21.4“ modelliert wird; damit lässt sich „mit Snapshots“ vs. „ohne
-Snapshots“ exakt ausdrücken.
+`VersionRange` is implemented as a **sorted list of disjoint half-open intervals**. Union, intersect and subtract
+are exact interval operations — no sampling, no heuristics. Prerelease boundaries are handled correctly by
+modelling `1.21.4` as `1.21.4-∅` (after all prereleases) and the artificial lower bound `1.21.4-` as “including all
+prereleases of 1.21.4”; that allows “with snapshots” vs. “without snapshots” to be expressed exactly.
 
-## 12.4 Matching-Algorithmus
+## 12.4 Matching algorithm
 
 ```java
 public final class PayloadMatcher {
@@ -587,7 +582,7 @@ public final class PayloadMatcher {
             reasons.add(Rejection.of(Constraint.ENVIRONMENT, p.requires().environment(), env.side()));
 
         for (Map.Entry<String, VersionRange> dep : p.requires().mods().entrySet()) {
-            SemVer present = env.modVersion(dep.getKey());          // null = nicht geladen
+            SemVer present = env.modVersion(dep.getKey());          // null = not loaded
             if (present == null)
                 reasons.add(Rejection.missingMod(dep.getKey(), dep.getValue()));
             else if (!dep.getValue().test(present))
@@ -599,97 +594,94 @@ public final class PayloadMatcher {
 }
 ```
 
-* **Alle** Verletzungen werden gesammelt, nicht nur die erste — der Diagnosebericht soll vollständig sein.
-* `requires.optionalMods` wird **nicht** geprüft (beeinflusst die Auswahl nicht), aber im Bericht als Info
-  ausgegeben.
-* Fabric-API-Modul-Sonderfall: Ist `fabric-api` selbst nicht geladen, aber sind alle in
-  `requires.mods` genannten Einzelmodule (`fabric-networking-api-v1` etc.) vorhanden, gilt die Bedingung als
-  erfüllt. Der Generator schreibt deshalb bei Bedarf Modul-IDs statt `fabric-api` — steuerbar über
-  `fabricApiMode = AGGREGATE | MODULES` in der DSL.
+* **All** violations are collected, not just the first — the diagnostic report is meant to be complete.
+* `requires.optionalMods` is **not** checked (it does not influence selection) but is reported as information.
+* Fabric API special case: if `fabric-api` itself is not loaded but all individual modules named in
+  `requires.mods` (`fabric-networking-api-v1` etc.) are present, the condition counts as satisfied. The generator
+  therefore writes module IDs instead of `fabric-api` where appropriate — controlled by
+  `fabricApiMode = AGGREGATE | MODULES` in the DSL.
 
-## 12.5 Prioritäten und Determinismus
+## 12.5 Priorities and determinism
 
-Die Auswahl ist deterministisch, **weil sie nicht von einer Prioritätsregel abhängt**, sondern von disjunkten
-Constraint-Bereichen. Das Framework erzwingt:
+Selection is deterministic **because it does not depend on a priority rule** but on disjoint constraint domains.
+The framework enforces:
 
-* **R1** — Für je zwei Payloads `a`, `b` gilt: `domain(a) ∩ domain(b) = ∅`, mit
+* **R1** — For any two payloads `a`, `b`: `domain(a) ∩ domain(b) = ∅`, where
   `domain(p) = mcRange(p) × javaRange(p) × envSet(p)`.
-* **R2** — Die Vereinigung aller `mcRange(p)` ist die `depends.minecraft`-Deklaration des Containers.
-* **R3** — Constraints, die nur *filtern* können (Fremdmods, Fabric API), gehen **nicht** in `domain` ein. Zwei
-  Payloads, die sich ausschließlich in `requires.mods` unterscheiden, sind ein Build-Fehler (`OMNI-1012`), weil
-  bei Erfüllung beider Bedingungen die Auswahl undefiniert wäre.
+* **R2** — The union of all `mcRange(p)` is the container's `depends.minecraft` declaration.
+* **R3** — Constraints that can only *filter* (foreign mods, Fabric API) do **not** enter `domain`. Two payloads
+  differing exclusively in `requires.mods` are a build error (`OMNI-1012`), because if both conditions were
+  satisfied the selection would be undefined.
 
-Verletzt eine Konfiguration R1, greift **nicht** ein Prioritäts-Tiebreak zur Laufzeit, sondern die
-Build-Zeit-Range-Subtraktion (12.7). Falls diese kein disjunktes Ergebnis liefern kann (z. B. weil zwei Payloads
-identische `domain` haben), bricht der Build ab.
+If a configuration violates R1, **no** runtime priority tie-break kicks in; instead build-time range subtraction
+does (12.7). Should that fail to produce a disjoint result (e.g. because two payloads have identical domains), the
+build aborts.
 
-## 12.6 Konflikt- und Lückenerkennung
+## 12.6 Conflict and gap detection
 
-| Prüfung | Code | Schwere |
+| Check | Code | Severity |
 |---|---|---|
-| Zwei Payloads mit überlappender `domain` und **gleicher** `priority` | `OMNI-1010` | Fehler |
-| Zwei Payloads, die sich nur in `requires.mods`/`optionalMods` unterscheiden | `OMNI-1012` | Fehler |
-| Lücke innerhalb der Gesamt-Union (z. B. 1.20.1 und 1.21 deklariert, 1.20.4 fehlt) | `OMNI-1013` | **Info** — Lücken sind legitim (nicht jede MC-Version wird unterstützt), werden aber im Report ausgewiesen und in die generierte Beschreibung übernommen |
-| Offene obere MC-Grenze | `OMNI-1050` | Warnung |
-| Payload-`java`-Minimum < MC-Minimum der Ziel-Version (z. B. `>=17` für 1.21.4) | `OMNI-1051` | Warnung mit Erklärung: MC 1.21.4 startet auf Java 17 nicht |
-| Container-`depends.java` ≠ Minimum der Payloads | `OMNI-1014` | Fehler (Generatorfehler) |
-| Manifest-Ranges ≠ Payload-`fabric.mod.json`-Ranges | `OMNI-1011` | Fehler |
+| Two payloads with overlapping domains and **equal** `priority` | `OMNI-1010` | error |
+| Two payloads differing only in `requires.mods`/`optionalMods` | `OMNI-1012` | error |
+| Gap inside the overall union (e.g. 1.20.1 and 1.21 declared, 1.20.4 missing) | `OMNI-1013` | **info** — gaps are legitimate (not every MC version is supported) but are reported and carried into the generated description |
+| Open upper MC bound | `OMNI-1050` | warning |
+| A payload's `java` minimum below the MC minimum of the target version (e.g. `>=17` for 1.21.4) | `OMNI-1051` | warning with an explanation: MC 1.21.4 will not start on Java 17 |
+| Container `depends.java` ≠ minimum of the payloads | `OMNI-1014` | error (generator bug) |
+| Manifest ranges ≠ payload `fabric.mod.json` ranges | `OMNI-1011` | error |
 
-## 12.7 Range-Subtraktion für Prioritäten
+## 12.7 Range subtraction for priorities
 
-Ein realistischer Anwendungsfall: Ein Entwickler pflegt ein „catch-all“-Payload `mcModern` mit
-`minecraft >= 1.21` und zusätzlich ein spezialisiertes Payload `mc1214` für genau `1.21.4`. Ohne Behandlung
-wären beide auf 1.21.4 wählbar.
+A realistic use case: a developer maintains a “catch-all” payload `mcModern` with `minecraft >= 1.21` and
+additionally a specialised payload `mc1214` for exactly `1.21.4`. Untreated, both would be selectable on 1.21.4.
 
-Algorithmus `DomainDisjunctifier` (Build-Zeit, im `generateOmniManifest`-Task):
+Algorithm `DomainDisjunctifier` (build time, in the `generateOmniManifest` task):
 
 ```
-Eingabe: Payloads P, sortiert nach priority DESC, dann id ASC
-claimed := leere Domain
-für jedes p in P:
-    effective(p) := domain(p) \ claimed         // Mengendifferenz über (mc × java × env)
-    wenn effective(p) leer:
-        Fehler OMNI-1015: "Payload p ist vollständig von höher priorisierten Payloads verdeckt"
+Input: payloads P, sorted by priority DESC, then id ASC
+claimed := empty domain
+for each p in P:
+    effective(p) := domain(p) \ claimed         // set difference over (mc × java × env)
+    if effective(p) is empty:
+        error OMNI-1015: "payload p is entirely shadowed by higher-priority payloads"
     claimed := claimed ∪ effective(p)
-    schreibe effective(p) in die generierten depends des Payloads
+    write effective(p) into the payload's generated depends
 ```
 
-Die Mengendifferenz wird komponentenweise über eine **Domain-Zerlegung** berechnet: `domain` ist eine endliche
-Vereinigung von Zellen `(mcInterval, javaInterval, envSet)`. Subtraktion einer Zelle von einer Zelle ergibt
-höchstens 3 (mc) × 3 (java) × 3 (env) = 27 Restzellen, die anschließend über
-`Interval`-Verschmelzung wieder minimiert werden. Das Ergebnis wird als OR-Array von Fabric-Predicates
-ausgegeben. Die Implementierung ist exakt, terminiert und ist mit 30 Testfällen (u. a. „mc1214 schlägt mcModern“,
-„client-only schlägt universal“, „Java-21-Variante schlägt Java-17-Variante“) abgedeckt.
+The set difference is computed component-wise over a **domain decomposition**: `domain` is a finite union of cells
+`(mcInterval, javaInterval, envSet)`. Subtracting one cell from another yields at most 3 (mc) × 3 (java) × 3 (env)
+= 27 remainder cells, which are then minimised again via `Interval` merging. The result is emitted as an OR array
+of Fabric predicates. The implementation is exact, terminating and covered by 30 test cases (including “mc1214
+beats mcModern”, “client-only beats universal”, “Java 21 variant beats Java 17 variant”).
 
-Beispielausgabe für obiges Szenario:
+Example output for the scenario above:
 
 ```
 mc1214    (priority 10) → depends.minecraft = [">=1.21.4 <1.21.5"]
 mcModern  (priority  0) → depends.minecraft = [">=1.21 <1.21.4", ">=1.21.5"]
 ```
 
-Damit ist die Laufzeitauswahl wieder disjunkt und deterministisch — **ohne** dass zur Laufzeit eine
-Prioritätsregel ausgewertet werden müsste.
+Runtime selection is thereby disjoint and deterministic again — **without** any priority rule needing to be
+evaluated at runtime.
 
-## 12.8 Union-Normalisierung für den Container
+## 12.8 Union normalisation for the container
 
 ```
-Eingabe: effektive MC-Ranges aller Payloads
-1. alle Intervalle sammeln
-2. sortieren nach (min, minInclusive)
-3. benachbarte Intervalle verschmelzen, wenn sie überlappen ODER direkt aneinander grenzen
-   (a.max == b.min und (a.maxInclusive || b.minInclusive))
-4. kanonische Predicate-Strings erzeugen:  ">=X <Y"  bzw. ">=X"  bzw. "=X"
-5. Ergebnis als JSON-Array in depends.minecraft
+Input: effective MC ranges of all payloads
+1. collect all intervals
+2. sort by (min, minInclusive)
+3. merge adjacent intervals when they overlap OR touch directly
+   (a.max == b.min and (a.maxInclusive || b.minInclusive))
+4. produce canonical predicate strings:  ">=X <Y"  resp. ">=X"  resp. "=X"
+5. emit the result as a JSON array in depends.minecraft
 ```
 
-Beispiel: `[1.20.1,1.20.2)`, `[1.21,1.21.2)`, `[1.21.4,1.21.5)` →
+Example: `[1.20.1,1.20.2)`, `[1.21,1.21.2)`, `[1.21.4,1.21.5)` →
 `[">=1.20.1 <1.20.2", ">=1.21 <1.21.2", ">=1.21.4 <1.21.5"]`.
 
-Der Fabric-Loader zeigt daraus im Fehlerfall eine Liste erlaubter Bereiche an — genau die gewünschte
-kontrollierte Fehlermeldung.
+From this Fabric Loader renders a list of permitted ranges in the failure case — exactly the controlled error
+message we want.
 
-## 12.9 Fehlermeldungen des Resolvers (Build-Zeit)
+## 12.9 Resolver error messages (build time)
 
 ```
 > Task :validateUniversalJar FAILED
@@ -712,10 +704,10 @@ OMNI-1010  Overlapping payload domains with equal priority
   Docs: https://fabricmultiloader.dev/docs/errors#omni-1010
 ```
 
-Jede Resolver-Fehlermeldung enthält: Code, Titel, beteiligte Objekte, exakte Überlappung/Abweichung, mindestens
-eine konkrete Korrekturmöglichkeit mit Dateiname und Zeile, Doku-Link. Das ist als Formatvorgabe für **alle**
-`OMNI-`-Meldungen normativ (Kapitel 29.1).
+Every resolver error message contains: code, title, the objects involved, the exact overlap/deviation, at least one
+concrete fix with file name and line, and a documentation link. That is normative as the format for **all**
+`OMNI-` messages (chapter 29.1).
 
 ---
 
-Weiter mit [Kapitel 13–15 — Classloading, Java-Kompatibilität, Mappings](part-04-classloading.md).
+Continue with [chapters 13–15 — classloading, Java compatibility, mappings](part-04-classloading.md).

@@ -1,49 +1,47 @@
 # 20. Gradle Plugin
 
-## 20.1 Vier Plugins, ein Artefakt
+## 20.1 Four plugins, one artifact
 
-Artefakt: `dev.fabricmultiloader:fabricmultiloader-gradle:1.0.0` (auch über das Gradle Plugin Portal).
+Artifact: `dev.fabricmultiloader:fabricmultiloader-gradle:1.0.0` (also via the Gradle Plugin Portal).
 
-| Plugin-ID | Ziel | Aufgabe |
+| Plugin ID | Applied to | Responsibility |
 |---|---|---|
-| `dev.fabricmultiloader.settings` | `settings.gradle.kts` | Repositories, Auto-Include der Module aus der Matrix, Konsistenzprüfung der Verzeichnisse |
-| `dev.fabricmultiloader.common` | `:common` | Toolchain + `--release baseline`, API-Dependency, Annotation Processor, Verbot von MC-Dependencies |
-| `dev.fabricmultiloader.version` | `:versions:mc-*` | Loom anwenden und konfigurieren, Dependencies aus der Matrix, Metadaten generieren, Ressourcen mergen, AW mergen, Payload bauen |
-| `dev.fabricmultiloader.universal` | Root-Projekt | DSL, Manifest-Generierung, Assembler, Validator, Slim-Jars, Run-Aliase, Integrationstests, Publishing |
+| `dev.fabricmultiloader.settings` | `settings.gradle.kts` | repositories, auto-inclusion of the modules from the matrix, consistency check of the directories |
+| `dev.fabricmultiloader.common` | `:common` | toolchain + `--release baseline`, API dependency, annotation processor, ban on MC dependencies |
+| `dev.fabricmultiloader.version` | `:versions:mc-*` | apply and configure Loom, dependencies from the matrix, generate metadata, merge resources, merge AW, build the payload |
+| `dev.fabricmultiloader.universal` | root project | DSL, manifest generation, assembler, validator, slim JARs, run aliases, integration tests, publishing |
 
-## 20.2 Warum keine Cross-Project-Konfiguration
+## 20.2 Why no cross-project configuration
 
-Ein einziges Root-Plugin, das `subprojects { apply(loom) … }` ausführt, wäre bequem, aber:
+A single root plugin doing `subprojects { apply(loom) … }` would be convenient, but:
 
-* **Gradle Project Isolation** (ab Gradle 8.x als Opt-in, künftig Default) verbietet, dass ein Projekt das
-  Modell eines anderen Projekts liest oder verändert. Cross-Project-Konfiguration würde den Build
-  zukunftsunfähig machen.
-* **Configuration Cache**: Cross-Project-Zugriffe erzeugen Invalidierungen bei jeder Änderung in einem
-  beliebigen Modul.
-* **IDE-Import**: IntelliJ importiert Module unabhängig; ein Modul, das erst durch Root-Konfiguration
-  vollständig wird, führt zu unvollständigen Klassenpfaden bis zum zweiten Sync.
+* **Gradle project isolation** (opt-in from Gradle 8.x, the default in the future) forbids one project from reading
+  or modifying another project's model. Cross-project configuration would make the build future-incompatible.
+* **Configuration cache**: cross-project access causes invalidation on any change in any module.
+* **IDE import**: IntelliJ imports modules independently; a module that only becomes complete through root
+  configuration leads to incomplete classpaths until the second sync.
 
-Deshalb: Jedes Modul wendet sein Plugin selbst an (3–5 Zeilen) und liest die gemeinsame Konfiguration aus
-`gradle/fabricmultiloader.toml`. Die Matrix-Datei ist die einzige geteilte Wahrheit, und sie ist eine
-**Datei**, kein Gradle-Modell — damit isolationssicher.
+Therefore: every module applies its own plugin (3–5 lines) and reads the shared configuration from
+`gradle/fabricmultiloader.toml`. The matrix file is the single shared truth, and it is a **file**, not a Gradle
+model — hence isolation-safe.
 
-## 20.3 Die Matrix-Datei `gradle/fabricmultiloader.toml`
+## 20.3 The matrix file `gradle/fabricmultiloader.toml`
 
 ```toml
 # ============================================================================
-#  FabricMultiLoader — Versionsmatrix
-#  Einzige Wahrheitsquelle. Wird von allen vier Plugins gelesen.
-#  Änderungen hier wirken auf Build, IDE, Metadaten, Validator, CI und Release.
+#  FabricMultiLoader — version matrix
+#  Single source of truth. Read by all four plugins.
+#  Changes here affect build, IDE, metadata, validator, CI and release.
 # ============================================================================
 
 [format]
-version = 1                       # Schemaversion dieser Datei
+version = 1                       # schema version of this file
 
 [mod]
 id            = "examplemod"
 version       = "2.0.0"
 name          = "Universal Example Mod"
-description   = "Ein Beispiel für FabricMultiLoader."
+description   = "An example for FabricMultiLoader."
 license       = "MIT"
 authors       = ["Example Author"]
 group         = "com.example"
@@ -57,7 +55,7 @@ sources  = "https://github.com/example/examplemod"
 issues   = "https://github.com/example/examplemod/issues"
 
 [container]
-baselineJava     = 17            # kleinstes Java der Matrix; Ziel-Bytecode von :common
+baselineJava     = 17            # lowest Java of the matrix; target bytecode of :common
 commonPackaging  = "shared"      # shared | embedded
 payloadAlias     = "examplemod-impl"
 strict           = true
@@ -70,7 +68,7 @@ api     = "1.0.0"
 loom    = "1.9.2"
 
 # ---------------------------------------------------------------------------
-#  Payloads. Reihenfolge irrelevant; 'priority' steuert Range-Subtraktion.
+#  Payloads. Order is irrelevant; 'priority' drives range subtraction.
 # ---------------------------------------------------------------------------
 
 [versions.mc1201]
@@ -133,7 +131,7 @@ clothConfig      = "15.0.140"
 clothConfigRange = ">=15.0.0 <16.0.0"
 modmenu          = "13.0.0"
 
-# Vorbereitet für das neue Mojang-Versionsschema mit Java 25:
+# Prepared for the new Mojang version scheme with Java 25:
 # [versions.mc261]
 # minecraft      = "26.1"
 # minecraftRange = ">=26.1 <26.2"
@@ -158,67 +156,67 @@ dependencies = [ { projectId = "P7dR8mSH", type = "required" } ]   # Fabric API
 projectId = "123456"
 ```
 
-**Feldsemantik (Auszug der nichtoffensichtlichen Felder):**
+**Field semantics (an excerpt of the non-obvious fields):**
 
-| Feld | Bedeutung |
+| Field | Meaning |
 |---|---|
-| `minecraft` | Exakte Version, gegen die Loom kompiliert (der „Build-Ziel-Punkt“). |
-| `minecraftRange` | Bereich, in dem das Payload zur Laufzeit akzeptiert wird. Muss `minecraft` enthalten (`OMNI-1160`). Getrennte Felder, weil man gegen 1.21.1 baut, aber 1.21–1.21.1 unterstützt. |
-| `snapshots` | `true` erweitert `minecraftRange` um Prerelease-Untergrenzen (`>=1.21.4-` statt `>=1.21.4`). |
-| `capabilities` | Wird in Manifest und Payload-Deskriptor übernommen und validiert. |
-| `[versions.X.dependencies]` | Freie Schlüssel; `<name>` = konkrete Version für den Compile/Dev-Run, `<name>Range` = Laufzeit-`depends`-Bereich. Ohne `Range` wird die Abhängigkeit nur `compileOnly`/`runtimeOnly` verwendet und **nicht** in `depends` geschrieben. |
-| `fabricApiMode` | `AGGREGATE` ⇒ `depends: {"fabric-api": …}`; `MODULES` ⇒ pro genutztem Fabric-API-Modul ein `depends`-Eintrag (für Mods, die nur Einzelmodule brauchen). |
+| `minecraft` | The exact version Loom compiles against (the “build target point”). |
+| `minecraftRange` | The range in which the payload is accepted at runtime. Must contain `minecraft` (`OMNI-1160`). Separate fields, because one builds against 1.21.1 but supports 1.21–1.21.1. |
+| `snapshots` | `true` extends `minecraftRange` with prerelease lower bounds (`>=1.21.4-` instead of `>=1.21.4`). |
+| `capabilities` | Carried into the manifest and the payload descriptor and validated. |
+| `[versions.X.dependencies]` | Free-form keys; `<name>` = the concrete version for compile/dev run, `<name>Range` = the runtime `depends` range. Without a `Range`, the dependency is used only as `compileOnly`/`runtimeOnly` and is **not** written into `depends`. |
+| `fabricApiMode` | `AGGREGATE` ⇒ `depends: {"fabric-api": …}`; `MODULES` ⇒ one `depends` entry per used Fabric API module (for mods that need only individual modules). |
 
-Der TOML-Parser des Plugins verlangt **alle** Pflichtfelder und lehnt unbekannte Schlüssel ab (`OMNI-1161`) —
-Tippfehler wie `minecraftRnage` werden damit sofort zum Build-Fehler statt zu stiller Fehlkonfiguration.
+The plugin's TOML parser requires **all** mandatory fields and rejects unknown keys (`OMNI-1161`) — typos like
+`minecraftRnage` therefore become an immediate build error instead of a silent misconfiguration.
 
-## 20.4 Tasks — vollständige Liste
+## 20.4 Tasks — complete list
 
-### Im Root-Projekt (`dev.fabricmultiloader.universal`)
+### In the root project (`dev.fabricmultiloader.universal`)
 
-| Task | Typ | Inputs | Outputs | Zweck |
+| Task | Type | Inputs | Outputs | Purpose |
 |---|---|---|---|---|
-| `generateOmniManifest` | `GenerateOmniManifestTask` | Matrix, DSL, Payload-Jars + deren `omni/payload.json`, `:common` `omni/entrypoints.json` | `build/omni/META-INF/omni-container.json` | Manifest inkl. Hashes, Größen, Classfile-Majors |
-| `generateContainerModJson` | `GenerateContainerModJsonTask` | Matrix, DSL, Manifest | `build/omni/fabric.mod.json` | Container-`fabric.mod.json` mit Union-Ranges |
-| `collectPayloads` | `Sync` | `:versions:*` `omniPayload`-Outputs | `build/omni/jars/` | Sammelt Payload-Jars deterministisch |
-| `resolveFrameworkRuntime` | `Copy` | Konfiguration `omniRuntime` | `build/omni/jars/fabricmultiloader-runtime-<v>.jar` | Holt die Runtime-Mod aus Maven |
-| `assembleUniversalJar` | `AssembleUniversalJarTask` (`Zip`-basiert) | alles obige + `:common:jar` + Icon + LICENSE | `build/libs/<mod>-<ver>-universal.jar` | Der Container |
-| `buildUniversalJar` | `DefaultTask` (Aggregat) | — | — | `assembleUniversalJar` + `validateUniversalJar` |
-| `validateUniversalJar` | `ValidateUniversalJarTask` | Universal-JAR | `build/reports/omni/validation.txt`, `.json`, Exit-Code | 34 Regeln (Kapitel 31) |
-| `buildSlimJars` | `BuildSlimJarsTask` | Payloads, `:common:jar`, Manifest | `build/libs/slim/<mod>-<ver>+<mc>.jar` | Optionale Einzelversions-Artefakte |
-| `omniReport` | `OmniReportTask` | Manifest | `build/reports/omni/matrix.md` + Konsole | Menschenlesbare Matrixübersicht für Release Notes |
-| `addMinecraftVersion` | `AddMinecraftVersionTask` | CLI-Optionen | Matrix-Eintrag, Verzeichnis, `build.gradle.kts`, Quell-Stubs | Scaffolding (Kapitel 37) |
-| `integrationTest` | `DefaultTask` (Aggregat) | — | — | alle `integrationTest<Payload>` |
-| `integrationTest<PayloadId>` | `ServerBootTestTask` | Universal-JAR, Matrix | `build/reports/omni/itest-<id>.log` | Echter Serverstart (Kapitel 32.4) |
-| `runClient<PayloadId>` / `runServer<PayloadId>` / `runDatagen<PayloadId>` | `DefaultTask` (Alias) | — | — | delegiert an `:versions:mc-X:runClient` etc. |
-| `runUniversalServer<PayloadId>` | `UniversalRunTask` | Universal-JAR | Server-Instanz in `run/universal-<id>/` | Startet den echten Container interaktiv |
-| `publishUniversal` | `DefaultTask` (Aggregat) | — | — | Modrinth + CurseForge + GitHub Release |
+| `generateOmniManifest` | `GenerateOmniManifestTask` | matrix, DSL, payload JARs + their `omni/payload.json`, `:common` `omni/entrypoints.json` | `build/omni/META-INF/omni-container.json` | manifest including hashes, sizes, class file majors |
+| `generateContainerModJson` | `GenerateContainerModJsonTask` | matrix, DSL, manifest | `build/omni/fabric.mod.json` | container `fabric.mod.json` with union ranges |
+| `collectPayloads` | `Sync` | the `omniPayload` outputs of `:versions:*` | `build/omni/jars/` | collects payload JARs deterministically |
+| `resolveFrameworkRuntime` | `Copy` | configuration `omniRuntime` | `build/omni/jars/fabricmultiloader-runtime-<v>.jar` | fetches the runtime mod from Maven |
+| `assembleUniversalJar` | `AssembleUniversalJarTask` (`Zip`-based) | all of the above + `:common:jar` + icon + LICENSE | `build/libs/<mod>-<ver>-universal.jar` | the container |
+| `buildUniversalJar` | `DefaultTask` (aggregate) | — | — | `assembleUniversalJar` + `validateUniversalJar` |
+| `validateUniversalJar` | `ValidateUniversalJarTask` | the universal JAR | `build/reports/omni/validation.txt`, `.json`, exit code | 34 rules (chapter 31) |
+| `buildSlimJars` | `BuildSlimJarsTask` | payloads, `:common:jar`, manifest | `build/libs/slim/<mod>-<ver>+<mc>.jar` | optional single-version artifacts |
+| `omniReport` | `OmniReportTask` | manifest | `build/reports/omni/matrix.md` + console | human-readable matrix overview for release notes |
+| `addMinecraftVersion` | `AddMinecraftVersionTask` | CLI options | matrix entry, directory, `build.gradle.kts`, source stubs | scaffolding (chapter 37) |
+| `integrationTest` | `DefaultTask` (aggregate) | — | — | all `integrationTest<Payload>` |
+| `integrationTest<PayloadId>` | `ServerBootTestTask` | universal JAR, matrix | `build/reports/omni/itest-<id>.log` | a real server boot (chapter 32.4) |
+| `runClient<PayloadId>` / `runServer<PayloadId>` / `runDatagen<PayloadId>` | `DefaultTask` (alias) | — | — | delegates to `:versions:mc-X:runClient` etc. |
+| `runUniversalServer<PayloadId>` | `UniversalRunTask` | universal JAR | server instance in `run/universal-<id>/` | starts the real container interactively |
+| `publishUniversal` | `DefaultTask` (aggregate) | — | — | Modrinth + CurseForge + GitHub release |
 
 ### In `:versions:mc-*` (`dev.fabricmultiloader.version`)
 
-| Task | Typ | Zweck |
+| Task | Type | Purpose |
 |---|---|---|
-| `generatePayloadModJson` | `GeneratePayloadModJsonTask` | Payload-`fabric.mod.json` mit `depends`, `provides`, `breaks`, `mixins`, `accessWidener` |
+| `generatePayloadModJson` | `GeneratePayloadModJsonTask` | payload `fabric.mod.json` with `depends`, `provides`, `breaks`, `mixins`, `accessWidener` |
 | `generatePayloadDescriptor` | `GeneratePayloadDescriptorTask` | `omni/payload.json` |
-| `mergeAccessWidener` | `MergeAccessWidenerTask` | `shared.accesswidener` ⊕ payload-AW (Kapitel 17.3) |
-| `mergePayloadResources` | `MergeResourcesTask` | common ⊕ shared ⊕ version ⊕ datagen (Kapitel 25.3) |
-| `processResources` | `ProcessResources` (Loom-Standard) | Platzhalter-Expansion |
+| `mergeAccessWidener` | `MergeAccessWidenerTask` | `shared.accesswidener` ⊕ payload AW (chapter 17.3) |
+| `mergePayloadResources` | `MergeResourcesTask` | common ⊕ shared ⊕ version ⊕ datagen (chapter 25.3) |
+| `processResources` | `ProcessResources` (Loom standard) | placeholder expansion |
 | `remapJar` | Loom | named → intermediary |
-| `omniPayload` | `PayloadJarTask` (`Zip`) | Nimmt `remapJar`-Output, injiziert generierte Metadaten und gemergte Ressourcen, entfernt verbotene Einträge |
-| `validatePayload` | `ValidatePayloadTask` | Payload-lokale Regeln (Mixins, AW, Classfiles, Packages) — schnelle Rückmeldung ohne Universal-Build |
-| `runClient`, `runServer`, `runDatagen` | Loom | Dev-Runs mit passendem `javaLauncher` |
+| `omniPayload` | `PayloadJarTask` (`Zip`) | takes the `remapJar` output, injects the generated metadata and merged resources, removes forbidden entries |
+| `validatePayload` | `ValidatePayloadTask` | payload-local rules (mixins, AW, class files, packages) — quick feedback without a universal build |
+| `runClient`, `runServer`, `runDatagen` | Loom | dev runs with the matching `javaLauncher` |
 
 ### In `:common` (`dev.fabricmultiloader.common`)
 
-| Task | Zweck |
+| Task | Purpose |
 |---|---|
-| `compileJava` | mit `--release <baselineJava>` und aktiviertem Annotation Processor |
-| `jar` | Common-Klassen + `omni/entrypoints.json` |
-| `validateCommon` | Bytecode-Scan: keine MC-/Fabric-API-/Mixin-Referenzen, keine Klassen außerhalb `commonPackage` |
-| `test` | Reine JVM-Unit-Tests |
-| `apiJar` | Gefiltertes Artefakt `<mod>-api` für Drittmods (Kapitel 24.7) |
+| `compileJava` | with `--release <baselineJava>` and the annotation processor enabled |
+| `jar` | common classes + `omni/entrypoints.json` |
+| `validateCommon` | bytecode scan: no MC/Fabric API/Mixin references, no classes outside `commonPackage` |
+| `test` | plain JVM unit tests |
+| `apiJar` | the filtered `<mod>-api` artifact for third-party mods (chapter 24.7) |
 
-## 20.5 Task-Graph
+## 20.5 Task graph
 
 ```
 :common:compileJava ─► :common:jar ──────────────────────────────────┐
@@ -231,7 +229,7 @@ Tippfehler wie `minecraftRnage` werden damit sofort zum Build-Fehler statt zu st
 :versions:mc-1.20.1:generatePayloadModJson ────────────┼─► omniPayload ─┐
 :versions:mc-1.20.1:generatePayloadDescriptor ─────────┘        │      │
                                                      validatePayload   │
-   … analog mc-1.21.1, mc-1.21.4 …                                     │
+   … analogously mc-1.21.1, mc-1.21.4 …                                │
                                                                        ▼
                                             collectPayloads ─► generateOmniManifest
                                             resolveFrameworkRuntime ──┤
@@ -245,16 +243,16 @@ Tippfehler wie `minecraftRnage` werden damit sofort zum Build-Fehler statt zu st
                                                             buildUniversalJar
 ```
 
-Alle Tasks deklarieren Inputs/Outputs vollständig, sind `@CacheableTask` (außer den Run- und Aggregat-Tasks) und
-Configuration-Cache-kompatibel: Kein `Project`-Zugriff in Task-Actions, alle Werte über `Property<T>`/
-`ListProperty<T>`/`ConfigurableFileCollection`, Matrix-Lesen in einer `ValueSource`.
+All tasks declare inputs/outputs completely, are `@CacheableTask` (except the run and aggregate tasks) and are
+configuration-cache-compatible: no `Project` access inside task actions, all values via `Property<T>`/
+`ListProperty<T>`/`ConfigurableFileCollection`, matrix reading inside a `ValueSource`.
 
-## 20.6 Loom-Integration
+## 20.6 Loom integration
 
-Das Version-Plugin konfiguriert Loom vollständig:
+The version plugin configures Loom completely:
 
 ```kotlin
-// vereinfachter Auszug aus dev.fabricmultiloader.version (Plugin-Implementierung, Kotlin)
+// simplified excerpt from dev.fabricmultiloader.version (plugin implementation, Kotlin)
 val entry = Matrix.load(project).version(payloadId)
 
 project.pluginManager.apply("fabric-loom")
@@ -283,42 +281,42 @@ project.dependencies {
     add("modImplementation", "net.fabricmc:fabric-loader:${entry.loader}")
     add("modImplementation", "net.fabricmc.fabric-api:fabric-api:${entry.fabricApi}")
     add("modImplementation", "dev.fabricmultiloader:fabricmultiloader-runtime:${framework.runtime}")
-    add("implementation", project.project(":common"))       // Compile + Dev-Runtime, NICHT im Payload-Jar
+    add("implementation", project.project(":common"))       // compile + dev runtime, NOT in the payload jar
     add("compileOnly", "dev.fabricmultiloader:fabricmultiloader-api:${framework.api}")
 }
 ```
 
-Drei Feinheiten, die den Unterschied machen:
+Three subtleties that make the difference:
 
-1. **`implementation(project(":common"))`** ist korrekt und nicht `compileOnly`: Gradles `jar`-Task packt nur die
-   eigenen Klassen des Moduls, also landet Common **nicht** im Payload — aber es ist im Dev-Run-Classpath
-   vorhanden. Genau das gewünschte Verhalten, ohne Sonderkonstruktion.
-2. **`modImplementation` der Runtime**: Sie ist eine Fabric-Mod, muss also im Dev-Run als Mod geladen werden.
-   Loom remappt sie (No-Op, weil keine MC-Referenzen).
-3. **`runDir` außerhalb des Moduls** (`../../run/<payloadId>-client`): Alle Run-Verzeichnisse liegen zentral
-   unter `run/`, was Aufräumen, `.gitignore` und Vergleiche zwischen Versionen erleichtert.
+1. **`implementation(project(":common"))`** is correct rather than `compileOnly`: Gradle's `jar` task packages only
+   the module's own classes, so common does **not** end up in the payload — but it is present on the dev run
+   classpath. Exactly the desired behaviour, without any special construction.
+2. **`modImplementation` for the runtime**: it is a Fabric mod, so it must be loaded as a mod in the dev run. Loom
+   remaps it (a no-op, since there are no MC references).
+3. **`runDir` outside the module** (`../../run/<payloadId>-client`): all run directories sit centrally under
+   `run/`, which simplifies clean-up, `.gitignore` and comparisons between versions.
 
-## 20.7 IDE-Unterstützung (IntelliJ IDEA)
+## 20.7 IDE support (IntelliJ IDEA)
 
-| Anforderung | Umsetzung |
+| Requirement | Implementation |
 |---|---|
-| Ein IDE-Modul pro MC-Version mit eigener MC-Abhängigkeit | Ergibt sich aus dem Gradle-Multi-Project; Loom liefert pro Modul die dekompilierten Sourcen der passenden MC-Version. |
-| Run Configurations pro Version | `ideConfigGenerated(true)` erzeugt „Minecraft Client (mc1201)“, „Minecraft Server (mc1201)“, „Data Generation (mc1201)“ usw. |
-| Richtiges JDK pro Modul | Toolchain je Modul (`17` für mc1201, `21` für mc1211/mc1214, `25` für mc261). IntelliJ übernimmt die Toolchain beim Gradle-Sync. |
-| Debugging | Normale Loom-Runs; Breakpoints in `:common` und im Version-Modul funktionieren gleichzeitig, weil Common als Projekt-Dependency (nicht als Jar) eingebunden ist. |
-| Debugging der **Universal-JAR** | `runUniversalServer<PayloadId>` startet einen echten Server mit `-agentlib:jdwp=…,address=5005,suspend=n`; das Plugin generiert zusätzlich eine „Attach to Universal (mc1214)“-Remote-Run-Config über `idea`-XML in `.idea/runConfigurations/`. |
-| Keine „generated sources“-Fallen | Es gibt **keine** synchronisierten Quellbäume. Generiert werden ausschließlich Metadaten (JSON) und gemergte Ressourcen — nie Java-Quellcode, der bearbeitet werden könnte. Das ist eine bewusste Entscheidung gegen Source-Merging (Kapitel 24.8). |
-| Datagen-Output als Ressourcenverzeichnis | `src/main/generated` wird als Ressourcen-SrcDir registriert und in IntelliJ als „generated“ markiert. |
+| One IDE module per MC version with its own MC dependency | Falls out of the Gradle multi-project; Loom supplies the decompiled sources of the matching MC version per module. |
+| Per-version run configurations | `ideConfigGenerated(true)` produces “Minecraft Client (mc1201)”, “Minecraft Server (mc1201)”, “Data Generation (mc1201)” and so on. |
+| The right JDK per module | A toolchain per module (`17` for mc1201, `21` for mc1211/mc1214, `25` for mc261). IntelliJ adopts the toolchain on Gradle sync. |
+| Debugging | Ordinary Loom runs; breakpoints work in `:common` and in the version module simultaneously, because common is included as a project dependency rather than a JAR. |
+| Debugging the **universal JAR** | `runUniversalServer<PayloadId>` starts a real server with `-agentlib:jdwp=…,address=5005,suspend=n`; the plugin additionally generates an “Attach to Universal (mc1214)” remote run config via `idea` XML in `.idea/runConfigurations/`. |
+| No “generated sources” traps | There are **no** synchronised source trees. Only metadata (JSON) and merged resources are generated — never Java source code that could be edited. This is a deliberate decision against source merging (chapter 24.8). |
+| Datagen output as a resource directory | `src/main/generated` is registered as a resource srcDir and marked “generated” in IntelliJ. |
 
-Zusätzlich generiert `dev.fabricmultiloader.universal` eine `.idea/runConfigurations/`-Gruppe „FabricMultiLoader“
-mit `buildUniversalJar`, `validateUniversalJar` und `integrationTest` als Gradle-Run-Configs, damit die drei
-wichtigsten Aktionen ohne Terminal erreichbar sind.
+Additionally, `dev.fabricmultiloader.universal` generates an `.idea/runConfigurations/` group “FabricMultiLoader”
+with `buildUniversalJar`, `validateUniversalJar` and `integrationTest` as Gradle run configs, so the three most
+important actions are reachable without a terminal.
 
 ---
 
 # 21. Gradle DSL
 
-## 21.1 `settings.gradle.kts` (vollständig)
+## 21.1 `settings.gradle.kts` (complete)
 
 ```kotlin
 pluginManagement {
@@ -334,12 +332,12 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"
 }
 
-// Liest gradle/fabricmultiloader.toml und ruft für jede [versions.X] ein
-// include(":versions:mc-<minecraft>") auf; include(":common") immer.
-// Prüft, dass jedes Verzeichnis existiert und keine verwaisten Verzeichnisse
-// vorhanden sind (OMNI-1162 / OMNI-1163).
+// Reads gradle/fabricmultiloader.toml and calls include(":versions:mc-<minecraft>")
+// for every [versions.X]; include(":common") always.
+// Checks that every directory exists and that there are no orphan directories
+// (OMNI-1162 / OMNI-1163).
 fabricMultiLoaderSettings {
-    // Optionale Overrides; im Normalfall leer:
+    // optional overrides; normally empty:
     // matrixFile.set(file("gradle/fabricmultiloader.toml"))
     // versionProjectPath.set("versions")
 }
@@ -357,7 +355,7 @@ dependencyResolutionManagement {
 }
 ```
 
-## 21.2 Root-`build.gradle.kts` (vollständig)
+## 21.2 Root `build.gradle.kts` (complete)
 
 ```kotlin
 plugins {
@@ -366,25 +364,25 @@ plugins {
 
 fabricMultiLoader {
 
-    // --- Modidentität: überschreibt/ergänzt [mod] aus der Matrix -----------
+    // --- mod identity: overrides/extends [mod] from the matrix --------------
     mod {
         // id / version / name / description / license / authors / contact
-        // kommen aus gradle/fabricmultiloader.toml und müssen hier nicht wiederholt werden.
+        // come from gradle/fabricmultiloader.toml and need not be repeated here.
 
-        // Entrypoints: entweder hier oder per @UniversalEntrypoint (Annotation Processor).
+        // Entrypoints: either here or via @UniversalEntrypoint (annotation processor).
         entrypoint("com.example.common.ExampleMod")
         clientEntrypoint("com.example.common.ExampleModClient")
         // serverEntrypoint("com.example.common.ExampleModServer")
 
-        // Zusätzliche Loader-Metadaten für den Container:
+        // Additional loader metadata for the container:
         conflicts("examplemod-legacy", "*")
         breaks("brokenmod", "<1.5.0")
         custom("modmenu", mapOf("links" to mapOf("modmenu.discord" to "https://discord.gg/example")))
     }
 
-    // --- Container-Optionen ------------------------------------------------
+    // --- container options -------------------------------------------------
     container {
-        commonPackaging.set(CommonPackaging.SHARED)      // oder EMBEDDED
+        commonPackaging.set(CommonPackaging.SHARED)      // or EMBEDDED
         strict.set(true)
         verifyIntegrity.set(true)
         archiveClassifier.set("universal")               // -> examplemod-2.0.0-universal.jar
@@ -392,42 +390,42 @@ fabricMultiLoader {
         reproducible.set(true)
     }
 
-    // --- Ressourcen --------------------------------------------------------
+    // --- resources -----------------------------------------------------------
     resources {
-        strictOverrides.set(true)     // undeklarierte Overrides sind Fehler
-        mergeLanguageFiles.set(true)  // assets/*/lang/*.json key-weise mergen
-        // erlaubte Overrides explizit deklarieren (Kapitel 25.4):
+        strictOverrides.set(true)     // undeclared overrides are errors
+        mergeLanguageFiles.set(true)  // merge assets/*/lang/*.json key by key
+        // declare permitted overrides explicitly (chapter 25.4):
         allowOverride("assets/examplemod/lang/en_us.json")
         allowOverride("assets/examplemod/models/item/ruby.json")
     }
 
-    // --- Validierung -------------------------------------------------------
+    // --- validation ----------------------------------------------------------
     validation {
         failOnWarnings.set(false)
-        // Einzelregeln abschaltbar, mit Pflichtbegründung im Build-Log:
-        // ignore("OMNI-1121", because = "AW-Ziel existiert nur in 1.21.4, gewollt")
+        // individual rules can be disabled, with a mandatory justification in the build log:
+        // ignore("OMNI-1121", because = "AW target exists only in 1.21.4, intentional")
     }
 
-    // --- Slim-Jars (optional) ---------------------------------------------
+    // --- slim jars (optional) ------------------------------------------------
     slimJars {
         enabled.set(false)
     }
 
-    // --- Integrationstests -------------------------------------------------
+    // --- integration tests ---------------------------------------------------
     integrationTests {
         enabled.set(true)
-        ticks.set(200)                       // Server läuft 200 Ticks, dann /stop
-        acceptEula.set(true)                 // schreibt eula=true in die Testinstanz
+        ticks.set(200)                       // the server runs 200 ticks, then /stop
+        acceptEula.set(true)                 // writes eula=true into the test instance
         timeout.set(java.time.Duration.ofMinutes(6))
-        extraMods("net.fabricmc.fabric-api:fabric-api")   // pro Payload passende Version aus der Matrix
+        extraMods("net.fabricmc.fabric-api:fabric-api")   // the matching version per payload from the matrix
     }
 
-    // --- Distribution ------------------------------------------------------
+    // --- distribution --------------------------------------------------------
     publishing {
         modrinth {
             enabled.set(true)
             token.set(providers.environmentVariable("MODRINTH_TOKEN"))
-            // gameVersions/loaders/dependencies werden aus der Matrix abgeleitet
+            // gameVersions/loaders/dependencies are derived from the matrix
         }
         curseforge {
             enabled.set(true)
@@ -445,21 +443,21 @@ fabricMultiLoader {
 }
 ```
 
-## 21.3 `common/build.gradle.kts` (vollständig)
+## 21.3 `common/build.gradle.kts` (complete)
 
 ```kotlin
 plugins {
     id("dev.fabricmultiloader.common")
 }
 
-// Toolchain, --release, api-Dependency und Annotation Processor setzt das Plugin
-// aus [container].baselineJava und [framework].api.
+// The plugin sets the toolchain, --release, the api dependency and the annotation
+// processor from [container].baselineJava and [framework].api.
 
 dependencies {
-    // Reine JVM-Bibliotheken sind erlaubt, wenn sie in JEDER unterstützten
-    // Umgebung funktionieren. Sie werden vom Assembler NICHT eingebettet;
-    // dafür ist 'omniInclude' zuständig (Kapitel 24.5).
-    // implementation("org.jetbrains:annotations:26.0.1")   // compileOnly-artig, nicht nötig zur Laufzeit
+    // Plain JVM libraries are permitted if they work in EVERY supported
+    // environment. They are NOT embedded by the assembler; that is what
+    // 'omniInclude' is for (chapter 24.5).
+    // implementation("org.jetbrains:annotations:26.0.1")   // compileOnly-like, not needed at runtime
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testImplementation("org.assertj:assertj-core:3.27.0")
@@ -469,7 +467,7 @@ dependencies {
 tasks.test { useJUnitPlatform() }
 ```
 
-## 21.4 `versions/mc-1.21.4/build.gradle.kts` (vollständig)
+## 21.4 `versions/mc-1.21.4/build.gradle.kts` (complete)
 
 ```kotlin
 plugins {
@@ -477,35 +475,35 @@ plugins {
 }
 
 fabricMultiLoaderVersion {
-    payloadId.set("mc1214")            // Schlüssel in [versions.*]; Default aus dem Verzeichnisnamen ableitbar
+    payloadId.set("mc1214")            // key in [versions.*]; can be derived from the directory name
 
-    // Optionale, payload-lokale Feineinstellungen:
+    // optional payload-local fine tuning:
     clientOnlyPackages.add("com.example.mc1214.client")
     // allowForeignAccessWidener("cloth-config")
     // overrideCapability("commands", implementedByPayload = true)
 }
 
 dependencies {
-    // Versionsspezifische Mod-Abhängigkeiten. Versionen kommen aus
-    // [versions.mc1214.dependencies]; 'omniMod' schreibt zusätzlich den
-    // passenden depends-Eintrag in die Payload-fabric.mod.json.
+    // Version-specific mod dependencies. Versions come from
+    // [versions.mc1214.dependencies]; 'omniMod' additionally writes the
+    // matching depends entry into the payload fabric.mod.json.
     omniMod("me.shedaniel.cloth:cloth-config-fabric", key = "clothConfig") {
         exclude(group = "net.fabricmc.fabric-api")
     }
 
-    // Optionale Integration: kein depends, nur compileOnly + Dev-Runtime.
+    // Optional integration: no depends, only compileOnly + dev runtime.
     omniOptionalMod("com.terraformersmc:modmenu", key = "modmenu")
 
-    // Bibliothek, die IN das Payload eingebettet werden soll (JiJ im Payload):
+    // A library to be embedded INTO the payload (JiJ inside the payload):
     // omniInclude("com.example.libs:mylib:1.2.3")
 }
 ```
 
-## 21.5 DSL-Referenz (Auszug mit Typen)
+## 21.5 DSL reference (excerpt with types)
 
 ```kotlin
 interface FabricMultiLoaderExtension {
-    val matrix: Provider<Matrix>                       // read-only Sicht auf die TOML
+    val matrix: Provider<Matrix>                       // read-only view of the TOML
     fun mod(action: Action<ModSpec>)
     fun container(action: Action<ContainerSpec>)
     fun resources(action: Action<ResourceSpec>)
@@ -542,7 +540,7 @@ interface FabricMultiLoaderVersionExtension {
     fun overrideCapability(id: String, implementedByPayload: Boolean)
 }
 
-// Dependency-DSL-Erweiterungen im Version-Modul
+// dependency DSL extensions in the version module
 fun DependencyHandler.omniMod(coordinateWithoutVersion: String, key: String,
                               configure: ExternalModuleDependency.() -> Unit = {})
 fun DependencyHandler.omniOptionalMod(coordinateWithoutVersion: String, key: String,
@@ -550,14 +548,14 @@ fun DependencyHandler.omniOptionalMod(coordinateWithoutVersion: String, key: Str
 fun DependencyHandler.omniInclude(coordinate: String)
 ```
 
-Die vollständige, generierte DSL-Referenz entsteht aus KDoc/Javadoc der Extension-Interfaces und wird als
-`docs/gradle-plugin.md` sowie als HTML publiziert (Kapitel 38.3).
+The complete, generated DSL reference is produced from the KDoc/Javadoc of the extension interfaces and published
+as `docs/gradle-plugin.md` and as HTML (chapter 38.3).
 
 ---
 
 # 22. Repository Structure
 
-## 22.1 Framework-Repository `fabricmultiloader/fabricmultiloader`
+## 22.1 Framework repository `fabricmultiloader/fabricmultiloader`
 
 ```
 fabricmultiloader/
@@ -566,7 +564,7 @@ fabricmultiloader/
 ├── gradle.properties
 ├── gradle/libs.versions.toml
 ├── gradlew, gradlew.bat, gradle/wrapper/
-├── LICENSE  (aktuell proprietär; Ziel: Apache-2.0, siehe LICENSE Abschnitt 4)
+├── LICENSE  (currently proprietary; target: Apache-2.0, see LICENSE section 4)
 ├── NOTICE
 ├── README.md
 ├── CONTRIBUTING.md
@@ -574,21 +572,21 @@ fabricmultiloader/
 ├── SECURITY.md
 ├── CHANGELOG.md
 │
-├── format/                       dev.fabricmultiloader.format        Java 8, 0 Abhängigkeiten
+├── format/                       dev.fabricmultiloader.format        Java 8, 0 dependencies
 │   └── src/{main,test}/java/dev/fabricmultiloader/format/
 │       ├── json/                 JsonValue, Json, JsonWriter, JsonPointer
 │       ├── version/              SemVer, VersionPredicate, VersionRange, Interval, JavaVersions
 │       ├── manifest/             ContainerManifest, PayloadDescriptor, Requirements, ManifestReader/Writer
 │       ├── payload/              PayloadResolver, PayloadMatcher, MatchResult, Rejection, DomainDisjunctifier
 │       ├── error/                ErrorCode, OmniException, Messages
-│       └── hash/                 Sha256 (JDK-MessageDigest-Wrapper mit Streaming)
+│       └── hash/                 Sha256 (a streaming wrapper around the JDK MessageDigest)
 │
 ├── api/                          dev.fabricmultiloader.api           Java 8
 │   └── src/main/java/dev/fabricmultiloader/api/
-│       ├── (Root: UniversalMod, ModContext, Id, Side, ModLogger, Capability, …)
+│       ├── (root: UniversalMod, ModContext, Id, Side, ModLogger, Capability, …)
 │       ├── platform/  registry/  net/  command/  event/  ref/  config/  resource/  text/
 │
-├── runtime/                      dev.fabricmultiloader.runtime       Java 8, Fabric-Mod
+├── runtime/                      dev.fabricmultiloader.runtime       Java 8, a Fabric mod
 │   ├── src/main/java/dev/fabricmultiloader/runtime/
 │   │   ├── entrypoint/           ContainerPreLaunch, PayloadPreLaunch, PayloadMain,
 │   │   │                         PayloadClient, PayloadServer
@@ -597,7 +595,7 @@ fabricmultiloader/
 │   │   ├── env/                  EnvironmentDetector, Environment
 │   │   ├── payload/              PlatformLoader, PayloadActivation
 │   │   ├── context/              ModContextImpl, ServiceRegistryImpl, CapabilityResolver
-│   │   ├── adapter/              CommandsImpl, EventsImpl, TextConverter (versionsstabile Teile)
+│   │   ├── adapter/              CommandsImpl, EventsImpl, TextConverter (version-stable parts)
 │   │   ├── diag/                 DiagnosticReport, ReportWriter, DebugDump, CrashContextImpl
 │   │   ├── mixin/                ConditionalMixinPlugin, ConfigLocator, PluginLog
 │   │   └── log/                  Log, Slf4jBridge, Formatter
@@ -610,7 +608,7 @@ fabricmultiloader/
 ├── gradle-plugin/                dev.fabricmultiloader.gradle        Java 17 / Kotlin
 │   └── src/main/kotlin/dev/fabricmultiloader/gradle/
 │       ├── SettingsPlugin.kt  CommonPlugin.kt  VersionPlugin.kt  UniversalPlugin.kt
-│       ├── dsl/               Extensions, Specs, CommonPackaging
+│       ├── dsl/               extensions, specs, CommonPackaging
 │       ├── matrix/            MatrixParser (TOML), MatrixModel, MatrixValueSource
 │       ├── task/              GenerateOmniManifestTask, GenerateContainerModJsonTask,
 │       │                      GeneratePayloadModJsonTask, GeneratePayloadDescriptorTask,
@@ -625,27 +623,27 @@ fabricmultiloader/
 │   └── src/main/java/…/          FakeEnvironment, FakeModContext, ManifestBuilder,
 │                                 JarFixtures, LoaderConformanceHarness, ServerHarness
 │
-├── example/                      UniversalExampleMod (Kapitel 35)
-├── docs/                         (Kapitel 38)
-└── .github/workflows/            (Kapitel 33)
+├── example/                      UniversalExampleMod (chapter 35)
+├── docs/                         (chapter 38)
+└── .github/workflows/            (chapter 33)
 ```
 
-## 22.2 Modulabhängigkeiten und Verantwortlichkeiten
+## 22.2 Module dependencies and responsibilities
 
-| Modul | Verantwortlich für | Hängt ab von | Veröffentlicht als |
+| Module | Responsible for | Depends on | Published as |
 |---|---|---|---|
-| `format` | Datenmodell, Parser, Versionsalgebra, Fehlercodes, Hashing | — | `dev.fabricmultiloader:fabricmultiloader-format` |
-| `api` | Entwickler-SPI | `format` | `…-api` |
-| `runtime` | Bootstrap, Lifecycle, Diagnose, versionsstabile Adapter | `format`, `api`, `fabric-loader` (compileOnly) | `…-runtime` (Fabric-Mod-Jar) |
-| `processor` | Entrypoint-Ableitung | `format` | `…-processor` |
-| `gradle-plugin` | gesamte Build-Toolchain | `format`, Loom (compileOnly) | `dev.fabricmultiloader:fabricmultiloader-gradle` + Plugin-Marker |
-| `testing` | Test-Harness für Framework **und** Modprojekte | `format`, `api` | `…-testing` |
-| `example` | Referenzimplementierung, wird in CI gebaut, validiert und gebootet | alle | nicht veröffentlicht |
+| `format` | data model, parsers, version algebra, error codes, hashing | — | `dev.fabricmultiloader:fabricmultiloader-format` |
+| `api` | the developer SPI | `format` | `…-api` |
+| `runtime` | bootstrap, lifecycle, diagnostics, version-stable adapters | `format`, `api`, `fabric-loader` (compileOnly) | `…-runtime` (a Fabric mod JAR) |
+| `processor` | entrypoint derivation | `format` | `…-processor` |
+| `gradle-plugin` | the entire build toolchain | `format`, Loom (compileOnly) | `dev.fabricmultiloader:fabricmultiloader-gradle` + plugin markers |
+| `testing` | test harness for the framework **and** for mod projects | `format`, `api` | `…-testing` |
+| `example` | reference implementation; built, validated and booted in CI | all | not published |
 
-`format` ist bewusst das Herz: Weil derselbe Code im Gradle-Plugin und in der Runtime läuft, können Build-Zeit-
-und Laufzeitentscheidungen nicht divergieren.
+`format` is deliberately the heart: because the same code runs in the Gradle plugin and in the runtime, build-time
+and runtime decisions cannot diverge.
 
-## 22.3 Modprojekt-Struktur (Referenz)
+## 22.3 Mod project structure (reference)
 
 ```
 universal-example-mod/
@@ -653,8 +651,8 @@ universal-example-mod/
 ├── build.gradle.kts
 ├── gradle.properties
 ├── gradle/
-│   ├── fabricmultiloader.toml            ← die Matrix
-│   ├── libs.versions.toml                ← nur Test-/Build-Bibliotheken
+│   ├── fabricmultiloader.toml            ← the matrix
+│   ├── libs.versions.toml                ← test/build libraries only
 │   └── wrapper/
 ├── gradlew, gradlew.bat
 ├── LICENSE, README.md, CHANGELOG.md
@@ -664,8 +662,8 @@ universal-example-mod/
 │   └── src/
 │       ├── main/java/com/example/common/…
 │       ├── main/resources/
-│       │   ├── assets/examplemod/…       ← gemeinsame Assets
-│       │   └── data/examplemod/…         ← gemeinsame Daten
+│       │   ├── assets/examplemod/…       ← shared assets
+│       │   └── data/examplemod/…         ← shared data
 │       ├── main/accesswidener/shared.accesswidener
 │       ├── main/omni/icon.png
 │       └── test/java/com/example/common/…
@@ -677,110 +675,107 @@ universal-example-mod/
 │   ├── mc-1.21.1/
 │   └── mc-1.21.4/
 │
-├── run/                                  ← alle Dev-Run-Verzeichnisse (gitignored)
+├── run/                                  ← all dev run directories (gitignored)
 └── .github/workflows/build.yml
 ```
 
-Es gibt **kein** separates `universal/`-Modul: Der Container wird im Root-Projekt assembliert. Begründung: Der
-Container hat keine eigenen Quellen (nur generierte Metadaten + Common-Jar + Payloads), ein eigenes Modul wäre
-leerer Overhead und ein zusätzlicher IDE-Eintrag. `./gradlew buildUniversalJar` im Root ist damit der natürliche
-Einstieg.
+There is **no** separate `universal/` module: the container is assembled in the root project. Rationale: the
+container has no sources of its own (only generated metadata + the common JAR + payloads), a dedicated module would
+be empty overhead and an extra IDE entry. `./gradlew buildUniversalJar` in the root is therefore the natural entry
+point.
 
-## 22.4 Package-Konventionen im Modprojekt
+## 22.4 Package conventions in the mod project
 
-| Ort | Package | Regel |
+| Location | Package | Rule |
 |---|---|---|
-| `:common` | `<basePackage>.common.**` | keine MC-Referenzen; öffentliche Mod-API unter `<basePackage>.common.api` |
-| `:versions:mc-X` | `<basePackage>.<payloadId>.**` | z. B. `com.example.mc1214` |
-| Mixins | `<basePackage>.<payloadId>.mixin` / `.client.mixin` | vom Validator erzwungen |
-| Client-only | `<basePackage>.<payloadId>.client.**` | in `clientOnlyPackages` deklariert |
+| `:common` | `<basePackage>.common.**` | no MC references; the public mod API under `<basePackage>.common.api` |
+| `:versions:mc-X` | `<basePackage>.<payloadId>.**` | e.g. `com.example.mc1214` |
+| Mixins | `<basePackage>.<payloadId>.mixin` / `.client.mixin` | enforced by the validator |
+| Client-only | `<basePackage>.<payloadId>.client.**` | declared in `clientOnlyPackages` |
 
-Die Package-Disjunktheit ist Validator-geprüft (`OMNI-1044`) und verhindert, dass zwei Payloads denselben FQCN
-belegen — wichtig für `commonPackaging = EMBEDDED` und für eindeutige Stacktraces.
+Package disjointness is validator-checked (`OMNI-1044`) and prevents two payloads from occupying the same FQCN —
+important for `commonPackaging = EMBEDDED` and for unambiguous stack traces.
 
 ---
 
 # 23. Build Pipeline
 
-## 23.1 Vollständige Pipeline
+## 23.1 The complete pipeline
 
 ```
 ① :common
    compileJava (--release 17, APT: UniversalEntrypointProcessor)
         │  → build/classes/java/main
         │  → build/generated/omni/entrypoints.json
-   validateCommon        (Bytecode-Scan: keine MC/Fabric-API/Mixin-Referenzen,
-        │                 nur commonPackage, Classfile-Major ≤ 61)
-   jar                   → common-2.0.0.jar   (Klassen + omni/entrypoints.json)
-   apiJar                → examplemod-api-2.0.0.jar (gefiltert auf …common.api)
+   validateCommon        (bytecode scan: no MC/Fabric API/Mixin references,
+        │                 only commonPackage, class file major ≤ 61)
+   jar                   → common-2.0.0.jar   (classes + omni/entrypoints.json)
+   apiJar                → examplemod-api-2.0.0.jar (filtered to …common.api)
 
-② :versions:mc-1.21.4        (analog für jede Matrixversion, parallelisierbar)
-   mergeAccessWidener    common/shared.accesswidener ⊕ payload-AW  (Namespace named)
+② :versions:mc-1.21.4        (analogously for every matrix version, parallelisable)
+   mergeAccessWidener    common/shared.accesswidener ⊕ payload AW  (namespace named)
         │                → build/omni/accesswidener/examplemod-mc1214.accesswidener
-   compileJava (--release 21, Mixin-AP → Refmap)
+   compileJava (--release 21, Mixin AP → refmap)
         │                → build/classes, build/devlibs/…-refmap.json
-   processResources      Platzhalter ${version} etc.
+   processResources      placeholders ${version} etc.
    mergePayloadResources common/resources ⊕ shared/resources ⊕ version/resources ⊕ generated
-        │                → build/omni/resources/            (+ Konfliktreport)
+        │                → build/omni/resources/            (+ conflict report)
    generatePayloadModJson    → build/omni/meta/fabric.mod.json
    generatePayloadDescriptor → build/omni/meta/omni/payload.json
-   jar                   Klassen + Mixin-Configs + Refmap
-   remapJar (Loom)       named → intermediary, remappt auch die AW-Datei
+   jar                   classes + mixin configs + refmap
+   remapJar (Loom)       named → intermediary, also remaps the AW file
         │                → build/libs/mc-1.21.4-2.0.0.jar
-   omniPayload           nimmt remapJar-Output; ersetzt/ergänzt:
-        │                  · fabric.mod.json        (generiert)
-        │                  · omni/payload.json      (generiert)
-        │                  · assets/**, data/**     (gemergt)
-        │                entfernt: META-INF/omni-container.json (falls vorhanden),
-        │                          leere Verzeichnisse, *.kotlin_module, Signaturen
+   omniPayload           takes the remapJar output; replaces/adds:
+        │                  · fabric.mod.json        (generated)
+        │                  · omni/payload.json      (generated)
+        │                  · assets/**, data/**     (merged)
+        │                removes: META-INF/omni-container.json (if present),
+        │                         empty directories, *.kotlin_module, signatures
         │                → build/omni/payload/examplemod-mc1214.jar
-   validatePayload       payload-lokale Regeln (schnelles Feedback)
+   validatePayload       payload-local rules (fast feedback)
 
-③ Root
-   collectPayloads          → build/omni/jars/examplemod-mc*.jar          (Sync, deterministisch)
+③ root
+   collectPayloads          → build/omni/jars/examplemod-mc*.jar          (Sync, deterministic)
    resolveFrameworkRuntime  → build/omni/jars/fabricmultiloader-runtime-1.0.0.jar
-   generateOmniManifest     liest jedes Payload-Jar:
-        │                     · SHA-256, Größe, Classfile-Major (Scan)
-        │                     · omni/payload.json (Constraints, Capabilities, Mixins, AW)
-        │                     · Ressourcen-Digest
-        │                   führt DomainDisjunctifier aus (Range-Subtraktion)
+   generateOmniManifest     reads every payload JAR:
+        │                     · SHA-256, size, class file major (scan)
+        │                     · omni/payload.json (constraints, capabilities, mixins, AW)
+        │                     · resource digest
+        │                   runs the DomainDisjunctifier (range subtraction)
         │                   → build/omni/META-INF/omni-container.json
-   generateContainerModJson → build/omni/fabric.mod.json  (Union-Ranges)
+   generateContainerModJson → build/omni/fabric.mod.json  (union ranges)
    assembleUniversalJar     Zip: MANIFEST.MF, fabric.mod.json, omni-container.json,
-        │                        Common-Klassen, omni/icon.png, LICENSE,
+        │                        common classes, omni/icon.png, LICENSE,
         │                        META-INF/jars/* (STORED)
         │                   → build/libs/examplemod-2.0.0-universal.jar
         │                   → build/reports/omni/universal-jar.sha256
-   validateUniversalJar     34 Regeln → build/reports/omni/validation.{txt,json}
-   buildUniversalJar        Aggregat
+   validateUniversalJar     34 rules → build/reports/omni/validation.{txt,json}
+   buildUniversalJar        aggregate
 ```
 
-## 23.2 Schritt-Details
+## 23.2 Step details
 
 ### `mergePayloadResources`
 
-Inputs (in Präzedenzreihenfolge, später gewinnt): `common/src/main/resources`,
-`shared/src/main/resources` (falls vorhanden), `versions/mc-X/src/main/resources`,
-`versions/mc-X/src/main/generated`. Details in Kapitel 25.
+Inputs (in precedence order, later wins): `common/src/main/resources`, `shared/src/main/resources` (if present),
+`versions/mc-X/src/main/resources`, `versions/mc-X/src/main/generated`. Details in chapter 25.
 
 ### `omniPayload`
 
-Ein `Zip`-Task, kein `Jar`-Task — bewusst, damit kein `MANIFEST.MF` automatisch entsteht (Payloads brauchen
-keines) und die Eintragsreihenfolge vollständig kontrolliert ist.
+A `Zip` task, not a `Jar` task — deliberately, so that no `MANIFEST.MF` is created automatically (payloads need
+none) and the entry order is fully controlled.
 
-Entfernungsliste (`excludeFromPayload`): `META-INF/omni-container.json`, `META-INF/*.SF`, `META-INF/*.RSA`,
-`META-INF/*.DSA`, `META-INF/INDEX.LIST`, `**/*.kotlin_module` (falls kein Kotlin konfiguriert),
-`**/.DS_Store`, `**/Thumbs.db`, leere Verzeichniseinträge.
+Removal list (`excludeFromPayload`): `META-INF/omni-container.json`, `META-INF/*.SF`, `META-INF/*.RSA`,
+`META-INF/*.DSA`, `META-INF/INDEX.LIST`, `**/*.kotlin_module` (if Kotlin is not configured), `**/.DS_Store`,
+`**/Thumbs.db`, empty directory entries.
 
 ### `generateOmniManifest`
 
-Liest die fertigen Payload-Jars — nicht die Gradle-Modelle der Version-Projekte. Damit ist der Task
-isolationssicher und cachefähig, und das Manifest beschreibt garantiert *das ausgelieferte Artefakt*, nicht
-eine Absicht.
+Reads the finished payload JARs — not the Gradle models of the version projects. That makes the task isolation-safe
+and cacheable, and guarantees that the manifest describes *the shipped artifact*, not an intention.
 
-Klassifikation der Classfile-Majors erfolgt über einen Stream-Scan: Für jeden `.class`-Eintrag werden die ersten
-8 Bytes gelesen (`CAFEBABE`, Minor, Major); abweichende Majors innerhalb eines Payloads führen zu
-`OMNI-1041` mit Auflistung.
+Class file major classification happens via a stream scan: for every `.class` entry the first 8 bytes are read
+(`CAFEBABE`, minor, major); differing majors inside one payload cause `OMNI-1041` with a listing.
 
 ### `assembleUniversalJar`
 
@@ -798,59 +793,59 @@ abstract class AssembleUniversalJarTask : DefaultTask() {
     @get:OutputFile     abstract val outputJar: RegularFileProperty
     @get:OutputFile     abstract val checksumFile: RegularFileProperty
 
-    @TaskAction fun assemble() { /* deterministische ZIP-Erzeugung gemäß Kapitel 10.5 */ }
+    @TaskAction fun assemble() { /* deterministic ZIP creation per chapter 10.5 */ }
 }
 ```
 
-Vorgehen: Alle Einträge werden zunächst in einer `TreeMap<String, EntrySource>` gesammelt (damit die Reihenfolge
-allein vom Pfad abhängt), Duplikate erzeugen `OMNI-1170` mit beiden Quellen, dann wird sequenziell geschrieben.
-Der Common-Jar wird **entpackt** eingebettet (Klassen direkt), nicht als nested Jar — er ist kein Mod.
+Procedure: all entries are first collected in a `TreeMap<String, EntrySource>` (so that ordering depends solely on
+the path), duplicates raise `OMNI-1170` naming both sources, and then everything is written sequentially. The
+common JAR is embedded **unpacked** (classes directly), not as a nested JAR — it is not a mod.
 
-## 23.3 Fehlerbehandlung im Build
+## 23.3 Build error handling
 
-| Situation | Reaktion |
+| Situation | Reaction |
 |---|---|
-| Ein Version-Modul kompiliert nicht | Der Build schlägt fehl, aber die anderen Module werden weiter gebaut (`--continue`-freundlich, da unabhängige Task-Bäume). Die Fehlermeldung nennt `payloadId` und MC-Version. |
-| Eine Matrixversion hat kein Verzeichnis | `OMNI-1162` im Settings-Plugin, mit dem exakten `addMinecraftVersion`-Befehl als Vorschlag |
-| Ein Verzeichnis hat keinen Matrixeintrag | `OMNI-1163`, Vorschlag: Eintrag ergänzen oder Verzeichnis löschen |
-| Duplikat beim Zusammenbau | `OMNI-1170` mit beiden Quellpfaden |
-| Nichtdeterministische Eingabe erkannt (z. B. Zeitstempel in einer generierten Datei) | `OMNI-1060` |
+| A version module fails to compile | The build fails, but the other modules keep building (`--continue`-friendly, since the task trees are independent). The error message names the `payloadId` and the MC version. |
+| A matrix version has no directory | `OMNI-1162` in the settings plugin, suggesting the exact `addMinecraftVersion` command |
+| A directory has no matrix entry | `OMNI-1163`, suggesting either adding the entry or deleting the directory |
+| Duplicate during assembly | `OMNI-1170` naming both source paths |
+| Non-deterministic input detected (e.g. a timestamp in a generated file) | `OMNI-1060` |
 
-## 23.4 Reproduzierbarkeit — Verifikation im Build
+## 23.4 Reproducibility — verification in the build
 
-`verifyReproducible` (in CI aktiv, lokal per `-Pomni.verifyReproducible=true`): Baut den Container zweimal in
-verschiedene Ausgabeverzeichnisse, vergleicht SHA-256 und schreibt bei Abweichung einen Diff-Report auf
-ZIP-Eintragsebene (Pfad, Größe, CRC32). Das fängt Regressionen in Generatoren zuverlässig.
+`verifyReproducible` (enabled in CI, locally via `-Pomni.verifyReproducible=true`): builds the container twice into
+different output directories, compares the SHA-256 values and, on divergence, writes a diff report at ZIP entry
+level (path, size, CRC32). That reliably catches regressions in the generators.
 
-## 23.5 Codegenerierung — was generiert wird und was nicht
+## 23.5 Code generation — what is generated and what is not
 
-| Generiert | Nicht generiert (bewusst) |
+| Generated | Deliberately not generated |
 |---|---|
-| `fabric.mod.json` (Container + Payloads) | Java-Quellcode |
-| `META-INF/omni-container.json`, `omni/payload.json` | Mixin-Configs |
-| gemergte Access-Widener-Dateien | Modlogik jeglicher Art |
-| gemergte Ressourcenbäume | Adapter-Implementierungen (nur Stubs beim Scaffolding) |
-| `omni/entrypoints.json` (APT) | Refmaps (das macht Loom/Mixin-AP) |
-| Validierungs- und Matrixberichte | |
+| `fabric.mod.json` (container + payloads) | Java source code |
+| `META-INF/omni-container.json`, `omni/payload.json` | mixin configs |
+| merged access widener files | mod logic of any kind |
+| merged resource trees | adapter implementations (only stubs during scaffolding) |
+| `omni/entrypoints.json` (APT) | refmaps (Loom/the Mixin AP does that) |
+| validation and matrix reports | |
 
-Grundsatz: **Generiert wird nur, was keine fachliche Entscheidung enthält.** Alles, was ein Entwickler lesen,
-verstehen und bewusst ändern muss, bleibt handgeschrieben. Damit gibt es keine „generierten Quellen, die man
-nicht bearbeiten darf“-Falle.
+Principle: **only things containing no substantive decision are generated.** Everything a developer must read,
+understand and deliberately change stays hand-written. There is therefore no “generated sources you must not edit”
+trap.
 
 ---
 
 # 24. Dependency Management
 
-## 24.1 Die vier Dependency-Klassen
+## 24.1 The four dependency classes
 
-| Klasse | Ort | Gradle-Konfiguration | Landet in `depends`? | Landet im Artefakt? |
+| Class | Location | Gradle configuration | Ends up in `depends`? | Ends up in the artifact? |
 |---|---|---|---|---|
-| **Framework** (`api`, `runtime`) | Container/alle Payloads | `api`/`modImplementation` (vom Plugin) | Container: `fabricmultiloader` | Runtime als nested Mod im Container |
-| **Common-Bibliothek** (reines JVM, versionsneutral) | `:common` | `implementation` + `omniIncludeCommon` | nein | entpackt oder als nested Jar im Container |
-| **Versions-Mod-Abhängigkeit** (Fabric API, Cloth Config …) | `:versions:mc-X` | `omniMod(coord, key)` | ja, im Payload | nein (Nutzer installiert sie) |
-| **Eingebettete Versions-Bibliothek** | `:versions:mc-X` | `omniInclude(coord)` | nein | als nested Jar **im Payload** |
+| **Framework** (`api`, `runtime`) | container/all payloads | `api`/`modImplementation` (by the plugin) | container: `fabricmultiloader` | the runtime as a nested mod in the container |
+| **Common library** (plain JVM, version-neutral) | `:common` | `implementation` + `omniIncludeCommon` | no | unpacked or as a nested JAR in the container |
+| **Version mod dependency** (Fabric API, Cloth Config …) | `:versions:mc-X` | `omniMod(coord, key)` | yes, in the payload | no (the user installs it) |
+| **Embedded version library** | `:versions:mc-X` | `omniInclude(coord)` | no | as a nested JAR **inside the payload** |
 
-## 24.2 `omniMod` — deklarierte Laufzeitabhängigkeit
+## 24.2 `omniMod` — a declared runtime dependency
 
 ```kotlin
 omniMod("me.shedaniel.cloth:cloth-config-fabric", key = "clothConfig") {
@@ -858,156 +853,153 @@ omniMod("me.shedaniel.cloth:cloth-config-fabric", key = "clothConfig") {
 }
 ```
 
-Wirkung:
+Effects:
 
-1. `modImplementation("me.shedaniel.cloth:cloth-config-fabric:15.0.140")` — Version aus
+1. `modImplementation("me.shedaniel.cloth:cloth-config-fabric:15.0.140")` — the version from
    `[versions.mc1214.dependencies].clothConfig`.
-2. Eintrag `"cloth-config": ">=15.0.0 <16.0.0"` in `depends` der Payload-`fabric.mod.json` — Bereich aus
+2. An entry `"cloth-config": ">=15.0.0 <16.0.0"` in the payload `fabric.mod.json`'s `depends` — the range from
    `clothConfigRange`.
-3. Eintrag in `requires.mods` des Payload-Deskriptors ⇒ erscheint im Diagnosebericht und wird vom
-   `PayloadMatcher` erklärt.
-4. Der Mod-ID-Wert wird **nicht geraten**: Das Plugin liest die `fabric.mod.json` des aufgelösten Artefakts und
-   entnimmt die echte Mod-ID (`OMNI-1180`, falls das Artefakt keine Fabric-Mod ist).
+3. An entry in `requires.mods` of the payload descriptor ⇒ it appears in the diagnostic report and is explained by
+   `PayloadMatcher`.
+4. The mod ID value is **not guessed**: the plugin reads the resolved artifact's `fabric.mod.json` and takes the
+   real mod ID from it (`OMNI-1180` if the artifact is not a Fabric mod).
 
-## 24.3 `omniOptionalMod` — optionale Integration
+## 24.3 `omniOptionalMod` — an optional integration
 
 ```kotlin
 omniOptionalMod("com.terraformersmc:modmenu", key = "modmenu")
 ```
 
-* `modCompileOnly` + `modLocalRuntime` (Dev-Run hat die Mod, das Payload deklariert sie nicht als `depends`).
-* Eintrag in `recommends` bzw. `requires.optionalMods`.
-* Zur Laufzeit prüft der Modcode `ctx.isModLoaded("modmenu")`; Integrations-Mixins werden über
-  `ConditionalMixinPlugin` gegated (Kapitel 16.6).
+* `modCompileOnly` + `modLocalRuntime` (the dev run has the mod, the payload does not declare it as `depends`).
+* An entry in `recommends` resp. `requires.optionalMods`.
+* At runtime the mod code checks `ctx.isModLoaded("modmenu")`; integration mixins are gated via
+  `ConditionalMixinPlugin` (chapter 16.6).
 
-## 24.4 Verhinderung inkompatibler Kombinationen
+## 24.4 Preventing incompatible combinations
 
-| Risiko | Schutzmechanismus |
+| Risk | Protection |
 |---|---|
-| Zwei Payloads bringen unterschiedliche Versionen derselben Bibliothek als nested Jar | Nur ein Payload lädt ⇒ nur eine Version aktiv. Zusätzlich Fabric-JiJ-Dedup, falls ein anderer Mod dieselbe Bibliothek mitbringt. |
-| Eine Bibliothek wird versehentlich in den **Container** eingebettet, obwohl sie versionsabhängig ist | `validateCommon` verbietet MC-/Fabric-API-Referenzen im Container; `OMNI-1181` verbietet Fabric-Mods (`fabric.mod.json` im Artefakt) in der `omniIncludeCommon`-Konfiguration. |
-| Transitiv hereingezogene Fabric API in falscher Version | Das Plugin setzt für alle `omniMod`-Deklarationen automatisch `exclude(group = "net.fabricmc.fabric-api")` und `exclude(group = "net.fabricmc", module = "fabric-loader")`, sofern nicht explizit anders konfiguriert. `OMNI-1182` warnt, wenn ein Payload doch eine zweite Fabric-API-Version enthält. |
-| Common-Code nutzt eine Bibliothek, die nur in neueren MC-Versionen vorhanden ist (z. B. neueres Gson) | `validateCommon` erlaubt in `:common` nur Referenzen auf JDK-`baselineJava`-API, `dev.fabricmultiloader.**`, `net.fabricmc.loader.api.**` und explizit in `omniIncludeCommon` deklarierte Artefakte (`OMNI-1183`). |
-| Zwei Universal-Mods mit unterschiedlichen Runtime-Versionen | Fabric-JiJ-Dedup + `depends`-Range (Kapitel 13.4). |
-| Kotlin | Wenn `:common` oder ein Version-Modul Kotlin nutzt, verlangt das Plugin `fabric-language-kotlin` als `omniMod` und warnt (`OMNI-1184`), weil dessen Version an die MC-Version gebunden ist. Kotlin ist unterstützt, aber die Kotlin-Runtime darf **nicht** in den Container eingebettet werden. |
+| Two payloads bring different versions of the same library as nested JARs | Only one payload loads ⇒ only one version is active. Additionally Fabric JiJ dedup, should another mod bring the same library. |
+| A library is accidentally embedded into the **container** although it is version-dependent | `validateCommon` forbids MC/Fabric API references in the container; `OMNI-1181` forbids Fabric mods (an artifact containing a `fabric.mod.json`) in the `omniIncludeCommon` configuration. |
+| Fabric API pulled in transitively at the wrong version | For every `omniMod` declaration the plugin automatically sets `exclude(group = "net.fabricmc.fabric-api")` and `exclude(group = "net.fabricmc", module = "fabric-loader")` unless explicitly configured otherwise. `OMNI-1182` warns when a payload nevertheless contains a second Fabric API version. |
+| Common code uses a library present only in newer MC versions (e.g. a newer Gson) | `validateCommon` permits in `:common` only references to the JDK `baselineJava` API, `dev.fabricmultiloader.**`, `net.fabricmc.loader.api.**` and artifacts explicitly declared in `omniIncludeCommon` (`OMNI-1183`). |
+| Two universal mods with different runtime versions | Fabric JiJ dedup + the `depends` range (chapter 13.4). |
+| Kotlin | If `:common` or a version module uses Kotlin, the plugin requires `fabric-language-kotlin` as an `omniMod` and warns (`OMNI-1184`), because its version is bound to the MC version. Kotlin is supported, but the Kotlin runtime must **not** be embedded into the container. |
 
-## 24.5 Bibliotheken im Container
+## 24.5 Libraries inside the container
 
 ```kotlin
 // common/build.gradle.kts
 dependencies {
-    omniIncludeCommon("com.example.libs:pure-jvm-lib:1.4.0")   // wird als nested Jar in den Container gelegt
+    omniIncludeCommon("com.example.libs:pure-jvm-lib:1.4.0")   // placed into the container as a nested JAR
 }
 ```
 
-Voraussetzungen, vom Plugin geprüft: kein `fabric.mod.json` im Artefakt (sonst wäre es eine Mod — dann gehört sie
-per `omniMod` ins Payload), Classfile-Major ≤ `baselineJava`, keine Referenzen auf `net.minecraft`.
-Eingebettete Common-Bibliotheken werden als **nested Jar** (nicht entpackt) mitgeliefert und dem Loader über
-`jars[]` bekannt gemacht — allerdings mit einer generierten Wrapper-`fabric.mod.json`
-(`id = "<modid>-lib-<artifact>"`, `custom.modmenu.parent`), weil Fabric nested Jars ohne Metadaten ignoriert.
-Alternativ (Default für kleine Bibliotheken < 64 KB): entpackte Einbettung mit Relocation via
-`omniRelocate("com.example.libs" to "com.example.common.shaded.libs")`, um FQCN-Kollisionen mit anderen Mods
-auszuschließen.
+Preconditions, checked by the plugin: no `fabric.mod.json` in the artifact (otherwise it is a mod — then it belongs
+into the payload via `omniMod`), class file major ≤ `baselineJava`, no references to `net.minecraft`. Embedded
+common libraries are shipped as a **nested JAR** (not unpacked) and made known to the loader via `jars[]` — with a
+generated wrapper `fabric.mod.json` (`id = "<modid>-lib-<artifact>"`, `custom.modmenu.parent`), because Fabric
+ignores nested JARs without metadata. Alternatively (the default for small libraries < 64 KB): unpacked embedding
+with relocation via `omniRelocate("com.example.libs" to "com.example.common.shaded.libs")`, to rule out FQCN
+collisions with other mods.
 
-## 24.6 Versionskatalog vs. Matrix
+## 24.6 Version catalog vs. matrix
 
-* `gradle/fabricmultiloader.toml` — **alles, was von der Minecraft-Version abhängt.**
-* `gradle/libs.versions.toml` — Build- und Testwerkzeuge (JUnit, AssertJ, Mockito), die von MC unabhängig sind.
+* `gradle/fabricmultiloader.toml` — **everything that depends on the Minecraft version.**
+* `gradle/libs.versions.toml` — build and test tooling (JUnit, AssertJ, Mockito) independent of MC.
 
-Diese Trennung ist normativ. Eine MC-abhängige Version im `libs.versions.toml` ist ein häufiger Fehler in
-Multi-Version-Setups und wird von `OMNI-1185` gemeldet (Heuristik: Versionsstring enthält `+1.` oder `-mc`).
+This separation is normative. An MC-dependent version in `libs.versions.toml` is a common mistake in multi-version
+setups and is reported by `OMNI-1185` (heuristic: the version string contains `+1.` or `-mc`).
 
-## 24.7 Publikation der Mod-API
+## 24.7 Publishing the mod API
 
 ```
-:common:apiJar   → examplemod-api-2.0.0.jar   (nur com.example.common.api.**  + Manifest)
-                   POM-Dependencies: dev.fabricmultiloader:fabricmultiloader-api:1.0.0 (compile)
+:common:apiJar   → examplemod-api-2.0.0.jar   (only com.example.common.api.**  + manifest)
+                   POM dependencies: dev.fabricmultiloader:fabricmultiloader-api:1.0.0 (compile)
 ```
 
-Drittmods:
+Third-party mods:
 
 ```kotlin
 dependencies {
     compileOnly("com.example:examplemod-api:2.0.0")
-    // kein modImplementation nötig: die Klassen liefert der Container zur Laufzeit
+    // no modImplementation needed: the container supplies the classes at runtime
 }
 ```
 
-Zur Laufzeit erhält die Drittmod die Implementierung über
-`ExampleModApi.get()` (ObjectShare, Kapitel 19.9) und muss `depends: {"examplemod": ">=2.0.0 <3.0.0"}` oder
-`suggests` deklarieren. Weil der Container über alle MC-Versionen dasselbe Kompilat ist, ist **ein**
-API-Artefakt für alle MC-Versionen korrekt — der zentrale Vorteil gegenüber der klassischen
-Ein-Jar-pro-Version-Veröffentlichung, bei der Drittmods pro MC-Version neu kompilieren müssen.
+At runtime the third-party mod obtains the implementation via `ExampleModApi.get()` (ObjectShare, chapter 19.9) and
+must declare `depends: {"examplemod": ">=2.0.0 <3.0.0"}` or `suggests`. Because the container is the same
+compilation across all MC versions, **one** API artifact is correct for all MC versions — the central advantage over
+the classic one-JAR-per-version release, where third-party mods must recompile per MC version.
 
-## 24.8 Geteilter Quellcode (`shared`) — bewusste Begrenzung
+## 24.8 Shared source code (`shared`) — a deliberate limitation
 
-Optional aktivierbar:
+Optionally enabled:
 
 ```toml
 [shared]
 enabled  = true
 srcDir   = "shared/src/main/java"
-versions = ["mc1211", "mc1214"]        # nur Versionen mit identischem Mapping-Provider
+versions = ["mc1211", "mc1214"]        # only versions with an identical mapping provider
 ```
 
-Wirkung: `shared/src/main/java` wird den genannten Version-Modulen als **zusätzliches** `srcDir` hinzugefügt
-(kein Kopieren, kein Sync, IDE-tauglich, direkt editierbar). Regeln, vom Validator erzwungen:
+Effect: `shared/src/main/java` is added to the named version modules as an **additional** `srcDir` (no copying, no
+sync, IDE-friendly, directly editable). Rules enforced by the validator:
 
-* **Kein Shadowing.** Eine Klasse darf nicht gleichzeitig in `shared` und in einem Version-Modul existieren
-  (`OMNI-1186`). Divergenz wird über Interfaces (Common) oder eigene Klassen (Version) gelöst, nicht über
-  Überschreiben.
-* **Gleicher Mapping-Provider** für alle beteiligten Versionen (`OMNI-1081`).
-* **Gleicher Java-Release-Level** für alle beteiligten Versionen; sonst müsste `shared` auf das Minimum
-  kompilieren, was zu verwirrenden Fehlern führt (`OMNI-1187`).
-* `shared`-Code darf MC-Typen benutzen — das ist sein Zweck. Er ist damit **nicht** versionsneutral, sondern
-  „für diese Untergruppe von Versionen gültig“.
+* **No shadowing.** A class must not exist simultaneously in `shared` and in a version module (`OMNI-1186`).
+  Divergence is solved via interfaces (common) or separate classes (version), not by overriding.
+* **The same mapping provider** for all participating versions (`OMNI-1081`).
+* **The same Java release level** for all participating versions; otherwise `shared` would have to compile against
+  the minimum, leading to confusing errors (`OMNI-1187`).
+* `shared` code may use MC types — that is its purpose. It is therefore **not** version-neutral but “valid for this
+  subgroup of versions”.
 
-Ein Source-Preprocessor (`//#if MC>=12100`) wird **nicht** eingebaut. Begründung: Er macht Quellcode für
-Contributors, Code-Review, IDE-Refactorings und statische Analyse schlechter; er verlagert Komplexität in eine
-zweite, nicht typgeprüfte Sprache; und er löst kein Problem, das `shared` + Adapter nicht ebenso löst. Wer ihn
-trotzdem will, kann Stonecutter parallel anwenden — das Plugin verhindert es nicht und dokumentiert die
-Kombination in `docs/version-modules.md`.
+A source preprocessor (`//#if MC>=12100`) is **not** built in. Rationale: it makes source code worse for
+contributors, code review, IDE refactorings and static analysis; it moves complexity into a second, untyped
+language; and it solves no problem that `shared` + adapters does not also solve. Anyone who still wants one can
+apply Stonecutter in parallel — the plugin does not prevent it and documents the combination in
+`docs/version-modules.md`.
 
 ---
 
 # 25. Resources
 
-## 25.1 Das Konfliktproblem und seine Lösung
+## 25.1 The conflict problem and its resolution
 
-Wären gemeinsame Ressourcen im Container und versionsspezifische im Payload, gäbe es **zwei** Resource Packs
-derselben Mod (Fabric registriert jede Mod mit `assets/`/`data/` als Pack). Die Präzedenz zwischen zwei
-Mod-Packs ist von der Mod-Ladereihenfolge abhängig und damit nicht verlässlich definiert.
+If shared resources lived in the container and version-specific ones in the payload, there would be **two** resource
+packs for the same mod (Fabric registers every mod with `assets/`/`data/` as a pack). The precedence between two mod
+packs depends on mod load order and is therefore not reliably defined.
 
-**Lösung:** Der Container enthält **keine** `assets/`- und **keine** `data/`-Einträge (Validator `OMNI-1023`).
-Alle Ressourcen werden zur Build-Zeit in **jedes** Payload gemergt. Zur Laufzeit existiert damit genau ein
-Resource Pack für die Mod. Das kostet Speicherplatz (Faktor = Anzahl Payloads) und ist ein bewusster Tausch von
-Größe gegen Determinismus (Nicht-Ziel N8).
+**Resolution:** the container contains **no** `assets/` and **no** `data/` entries (validator `OMNI-1023`). All
+resources are merged into **every** payload at build time. At runtime there is therefore exactly one resource pack
+for the mod. That costs disk space (a factor equal to the number of payloads) and is a deliberate trade of size for
+determinism (non-goal N8).
 
-Das Mod-Icon liegt deshalb unter `omni/icon.png` — außerhalb von `assets/` — und wird über
-`ModContainer#findPath` gelesen, nicht über das Resource-System.
+The mod icon therefore lives under `omni/icon.png` — outside `assets/` — and is read via `ModContainer#findPath`,
+not through the resource system.
 
-## 25.2 Merge-Reihenfolge
+## 25.2 Merge order
 
 ```
-1. common/src/main/resources/**                     (niedrigste Präzedenz)
-2. shared/src/main/resources/**                     (nur wenn [shared] aktiv und Version beteiligt)
+1. common/src/main/resources/**                     (lowest precedence)
+2. shared/src/main/resources/**                     (only when [shared] is active and the version participates)
 3. versions/mc-X/src/main/resources/**
-4. versions/mc-X/src/main/generated/**              (Datagen, höchste Präzedenz)
+4. versions/mc-X/src/main/generated/**              (datagen, highest precedence)
 ```
 
-## 25.3 Merge-Regeln je Dateityp
+## 25.3 Merge rules per file type
 
-| Muster | Regel |
+| Pattern | Rule |
 |---|---|
-| Alle Dateien | Bei identischem Pfad gewinnt die höhere Präzedenz. Bei **bytegleichem** Inhalt: still. Bei abweichendem Inhalt: nur erlaubt, wenn der Pfad in `resources { allowOverride(...) }` steht — sonst `OMNI-1200` (bei `strictOverrides = true`) bzw. Warnung. |
-| `assets/*/lang/*.json` | Bei `mergeLanguageFiles = true`: **key-weiser Deep-Merge**, höhere Präzedenz gewinnt pro Schlüssel. Ergebnis wird mit sortierten Schlüsseln geschrieben (Reproduzierbarkeit). Kein `allowOverride` nötig. |
-| `data/*/tags/**/*.json` | Kein Auto-Merge. Grund: Tags haben `replace`-Semantik und Reihenfolgebedeutung; ein naiver Merge wäre fachlich falsch. Vollständige Überschreibung mit Pflicht-`allowOverride`. Die Doku empfiehlt stattdessen, Tags über Datagen zu erzeugen. |
-| `fabric.mod.json` | In `resources` **verboten** (`OMNI-1021`) — wird generiert. |
-| `*.mixins.json`, `*.accesswidener`, `*-refmap.json` | Nur in Version-Modulen erlaubt; in `common/src/main/resources` verboten (`OMNI-1201`). |
-| `.DS_Store`, `Thumbs.db`, `*.blend`, `*.xcf`, `*.psd` | still verworfen (Ausschlussliste, erweiterbar über `resources { exclude(...) }`) |
-| Leere Verzeichnisse | nicht geschrieben |
+| All files | On an identical path, higher precedence wins. With **byte-identical** content: silent. With differing content: permitted only when the path is listed in `resources { allowOverride(...) }` — otherwise `OMNI-1200` (with `strictOverrides = true`) resp. a warning. |
+| `assets/*/lang/*.json` | With `mergeLanguageFiles = true`: a **key-wise deep merge**, higher precedence winning per key. The result is written with sorted keys (reproducibility). No `allowOverride` needed. |
+| `data/*/tags/**/*.json` | No auto-merge. Reason: tags have `replace` semantics and order significance; a naive merge would be substantively wrong. Full replacement with a mandatory `allowOverride`. The documentation recommends producing tags via datagen instead. |
+| `fabric.mod.json` | **Forbidden** in `resources` (`OMNI-1021`) — it is generated. |
+| `*.mixins.json`, `*.accesswidener`, `*-refmap.json` | Permitted only in version modules; forbidden in `common/src/main/resources` (`OMNI-1201`). |
+| `.DS_Store`, `Thumbs.db`, `*.blend`, `*.xcf`, `*.psd` | silently discarded (an exclusion list extensible via `resources { exclude(...) }`) |
+| Empty directories | not written |
 
-## 25.4 Konfliktbericht
+## 25.4 Conflict report
 
 `build/reports/omni/resource-merge-mc1214.txt`:
 
@@ -1039,11 +1031,11 @@ EXCLUDED (3)
 
 ## 25.5 Datagen
 
-* Ein Datagen-Lauf pro Version-Modul: `./gradlew runDatagen1214`. Output nach
-  `versions/mc-1.21.4/src/main/generated`, wird eingecheckt (damit CI ohne Datagen-Lauf baut und Diffs im
-  Review sichtbar sind).
-* Der Datagen-Provider-Code liegt im Version-Modul (er benutzt versionsspezifische
-  `FabricDataGenerator`-APIs), kann aber seine Eingaben aus dem Common-Modul beziehen:
+* One datagen run per version module: `./gradlew runDatagen1214`. The output goes to
+  `versions/mc-1.21.4/src/main/generated` and is committed (so CI builds without a datagen run and diffs are visible
+  in review).
+* The datagen provider code lives in the version module (it uses version-specific `FabricDataGenerator` APIs) but
+  can take its inputs from the common module:
 
 ```java
 // versions/mc-1.21.4/src/main/java/com/example/mc1214/datagen/ExampleDataGen1214.java
@@ -1056,22 +1048,21 @@ public final class ExampleDataGen1214 implements DataGeneratorEntrypoint {
 }
 ```
 
-`RubyContent` liegt im Common-Modul und beschreibt Rezepte/Drops in einem neutralen Datenmodell
-(`RecipeSpec`, `LootSpec`) — dieselbe Spezifikation, die auch zur Laufzeit für Tooltips verwendet wird. Damit
-sind Datagen und Laufzeit garantiert konsistent, und der versionsspezifische Anteil bleibt der reine
-Provider-Klebecode.
+`RubyContent` lives in the common module and describes recipes/drops in a neutral data model (`RecipeSpec`,
+`LootSpec`) — the same specification also used at runtime for tooltips. Datagen and runtime are therefore guaranteed
+consistent, and the version-specific portion stays pure provider glue.
 
-Der `DataGeneratorEntrypoint` wird in der Payload-`fabric.mod.json` **nur im Dev-Run** registriert: Das Plugin
-schreibt ihn in eine separate, dev-only `fabric.mod.json` (`build/omni/meta-dev/`), die im Payload-Artefakt
-nicht enthalten ist (`OMNI-1202` prüft, dass Release-Payloads keinen `fabric-datagen`-Entrypoint enthalten).
+The `DataGeneratorEntrypoint` is registered in the payload `fabric.mod.json` **only in the dev run**: the plugin
+writes it into a separate, dev-only `fabric.mod.json` (`build/omni/meta-dev/`) that is not contained in the payload
+artifact (`OMNI-1202` checks that release payloads contain no `fabric-datagen` entrypoint).
 
-## 25.6 Shader, Sounds, Modelle
+## 25.6 Shaders, sounds, models
 
-Keine Sonderbehandlung: Sie sind gewöhnliche Ressourcen und folgen den Regeln aus 25.3. Praktisch relevant ist
-nur, dass Shader (`assets/<ns>/shaders/**`) und Modell-Formate zwischen MC-Versionen inkompatibel werden können
-— dann gehören sie in `versions/mc-X/src/main/resources` und **nicht** in `common`, und der Override-Mechanismus
-mit `allowOverride` macht die Abweichung im Review sichtbar.
+No special treatment: they are ordinary resources and follow the rules in 25.3. The only practically relevant point
+is that shaders (`assets/<ns>/shaders/**`) and model formats can become incompatible between MC versions — then they
+belong in `versions/mc-X/src/main/resources` and **not** in `common`, and the override mechanism with
+`allowOverride` makes the deviation visible in review.
 
 ---
 
-Weiter mit [Kapitel 29–33 — Error Handling, Diagnostics, Validation, Testing, CI/CD](part-08-quality.md).
+Continue with [chapters 29–33 — error handling, diagnostics, validation, testing, CI/CD](part-08-quality.md).

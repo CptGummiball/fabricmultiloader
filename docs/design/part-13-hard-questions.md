@@ -1,387 +1,372 @@
-# Antworten auf die 25 harten technischen Fragen
+# Answers to the 25 hard technical questions
 
-Jede Antwort ist eine Festlegung, keine Option. Verweise zeigen auf die normative Stelle im Dokument.
+Every answer is a commitment, not an option. References point at the normative place in the document.
 
 ---
 
-### 1. Wie kann eine einzige JAR von Fabric Loader auf mehreren Minecraft-Versionen akzeptiert werden?
+### 1. How can a single JAR be accepted by Fabric Loader on several Minecraft versions?
 
-Indem der Container selbst minecraftunabhängig ist und in seiner `fabric.mod.json` die **Union** aller
-unterstützten MC-Bereiche deklariert:
+By making the container itself Minecraft-independent and declaring the **union** of all supported MC ranges in its
+`fabric.mod.json`:
 
 ```json
 "depends": { "minecraft": [">=1.20.1 <1.20.2", ">=1.21 <1.21.2", ">=1.21.4 <1.21.5"] }
 ```
 
-Fabric-Version-Predicates in einem Array sind OR-verknüpft. Der Container enthält keinen Minecraft-berührenden
-Code, keine Mixins und keinen Access Widener — er ist daher auf jeder dieser Versionen ladbar. Der
-versionsabhängige Teil steckt in genesteten Payload-Mods (`META-INF/jars/*.jar`), von denen der Loader-eigene
-SAT-Solver genau eine auswählt. (Kapitel 7.1, 11.8, 12.8)
+Fabric version predicates inside an array are OR-combined. The container contains no Minecraft-touching code, no
+mixins and no access widener — it is therefore loadable on every one of those versions. The version-dependent part
+sits in nested payload mods (`META-INF/jars/*.jar`), of which the loader's own SAT solver selects exactly one.
+(Chapters 7.1, 11.8, 12.8)
 
 ---
 
-### 2. Welche Klasse wird als allererste FabricMultiLoader-Klasse geladen?
+### 2. Which class is the very first FabricMultiLoader class to be loaded?
 
-`dev.fabricmultiloader.runtime.entrypoint.ContainerPreLaunch`, geladen vom `KnotClassLoader`, wenn Fabric die
-`preLaunch`-Entrypoints aufruft. Ihr statischer Initializer ist leer; `onPreLaunch()` ruft als erstes
-`RuntimeBootstrap.get()` auf.
+`dev.fabricmultiloader.runtime.entrypoint.ContainerPreLaunch`, loaded by `KnotClassLoader` when Fabric invokes the
+`preLaunch` entrypoints. Its static initialiser is empty; `onPreLaunch()` first calls `RuntimeBootstrap.get()`.
 
-Einzige Ausnahme: Nutzt ein Payload das optionale `ConditionalMixinPlugin`, wird
-`dev.fabricmultiloader.runtime.mixin.ConditionalMixinPlugin` schon in der Mixin-`select()`-Phase geladen, also
-vor `preLaunch`. Diese Klasse ist deshalb bewusst auf JDK-, `format`- und `FabricLoader`-API beschränkt und stößt
-`RuntimeBootstrap` nicht an (validiert durch `OMNI-1035`). (Kapitel 9.2)
-
----
-
-### 3. Gegen welche Minecraft-/Fabric-Version wird diese Bootstrap-Klasse kompiliert?
-
-Gegen **keine** Minecraft-Version. Compile-Abhängigkeiten sind ausschließlich:
-
-* JDK 8 API (`--release 8`, Classfile-Major 52),
-* `dev.fabricmultiloader.format` und `dev.fabricmultiloader.api`,
-* `net.fabricmc:fabric-loader:0.14.0` als `compileOnly` — die **niedrigste** unterstützte Loader-Version,
-  damit versehentliche Nutzung neuerer Loader-API zur Compile-Zeit auffällt.
-
-Verwendete Loader-API ist auf 12 stabile Methoden begrenzt (`FabricLoader.getInstance`, `getModContainer`,
-`getAllMods`, `isModLoaded`, `getEnvironmentType`, `isDevelopmentEnvironment`, `getGameDir`, `getConfigDir`,
-`getObjectShare`, `ModContainer#getMetadata/findPath`, `ModMetadata`-Getter). Verboten sind
-`net.fabricmc.loader.impl.**`, `net.minecraft.**`, `com.mojang.**`, `net.fabricmc.fabric.api.**`,
-`org.spongepowered.**`. (Kapitel 9.3, 14.2)
+The only exception: if a payload uses the optional `ConditionalMixinPlugin`, then
+`dev.fabricmultiloader.runtime.mixin.ConditionalMixinPlugin` is loaded during the Mixin `select()` phase, i.e.
+before `preLaunch`. That class is therefore deliberately restricted to the JDK, `format` and `FabricLoader` APIs and
+does not trigger `RuntimeBootstrap` (validated by `OMNI-1035`). (Chapter 9.2)
 
 ---
 
-### 4. Wie verhindert das System, dass inkompatible versionsspezifische Klassen frühzeitig geladen werden?
+### 3. Against which Minecraft/Fabric version is this bootstrap class compiled?
 
-Nicht durch Filterung, sondern durch **Nichtvorhandensein**: Die Klassen inaktiver Payloads liegen als Bytes in
-einem ZIP-Eintrag innerhalb des Containers. Der Loader extrahiert und dem Classpath hinzufügt **nur** die
-Payloads, die er ausgewählt hat. Ein JAR innerhalb eines JARs ist kein Classpath-Eintrag; die JVM sieht diese
-Klassen nie. Zusätzlich sind die Packages pro Payload disjunkt (`OMNI-1044`), sodass auch kein FQCN-Zufallstreffer
-möglich ist. (Kapitel 5.1, 13.2, 14.2)
+Against **no** Minecraft version. Its compile dependencies are exclusively:
 
----
+* the JDK 8 API (`--release 8`, class file major 52),
+* `dev.fabricmultiloader.format` and `dev.fabricmultiloader.api`,
+* `net.fabricmc:fabric-loader:0.14.0` as `compileOnly` — the **lowest** supported loader version, so that accidental
+  use of newer loader API is caught at compile time.
 
-### 5. Wie werden unterschiedliche Java-Classfile-Versionen behandelt?
-
-Jedes Payload wird auf das Java-Level seiner MC-Version kompiliert (61 für 1.20.1, 65 für 1.21.x, **69 für 26.1**)
-und deklariert `depends: {"java": ">=17"}` bzw. `">=21"` bzw. `">=25"`. Der Loader wertet den synthetischen
-Mod-Kandidaten `java` als harte Solver-Klausel aus. Der Container selbst wird auf dem **Minimum** der Matrix
-kompiliert (im Beispiel 61) und deklariert `depends.java >=17`.
-
-Der Validator liest den Classfile-Header (Bytes 4–7) **jeder** Klasse und prüft: Container ≤ Baseline
-(`OMNI-1040`), Payload == deklariertem Major (`OMNI-1041`), Major ↔ `requires.java` konsistent (`OMNI-1046`),
-Baseline == Minimum (`OMNI-1047`). Multi-Release-Strukturen sind verboten (`OMNI-1049`). (Kapitel 14)
+The loader API used is limited to 12 stable methods (`FabricLoader.getInstance`, `getModContainer`, `getAllMods`,
+`isModLoaded`, `getEnvironmentType`, `isDevelopmentEnvironment`, `getGameDir`, `getConfigDir`, `getObjectShare`,
+`ModContainer#getMetadata/findPath`, `ModMetadata` getters). Forbidden are `net.fabricmc.loader.impl.**`,
+`net.minecraft.**`, `com.mojang.**`, `net.fabricmc.fabric.api.**`, `org.spongepowered.**`. (Chapters 9.3, 14.2)
 
 ---
 
-### 6. Wie funktionieren Mixins, obwohl Fabric Mixins bereits sehr früh lädt?
+### 4. How does the system prevent incompatible version-specific classes from being loaded early?
 
-Genau **weil** Fabric früh lädt, gehören Mixins in die Payload-Mod: Fabric registriert in Phase 2.4 die
-`mixins`-Configs **aller ausgewählten Mods**. Ein nicht ausgewähltes Payload hat keine registrierte Config;
-Sponge Mixin liest seine Mixin-Klassen daher nie, löst keine `ClassInfo` auf und validiert keine Targets. Für das
-aktive Payload läuft alles exakt wie bei einer normalen Mod — inklusive korrektem `compatibilityLevel` pro
-Java-Version.
-
-Ein Laufzeit-„Mixin-Dispatcher“ existiert bewusst nicht: Nach Phase 2.4 kann keine Config mehr sinnvoll
-nachgereicht werden, und `IMixinConfigPlugin#shouldApplyMixin` verhindert nur die *Anwendung*, nicht das *Laden
-und Validieren*. (Kapitel 5.3, 16.1, 16.8)
+Not by filtering, but by **non-existence**: the classes of inactive payloads sit as bytes in a ZIP entry inside the
+container. The loader extracts and adds to the classpath **only** the payloads it selected. A JAR inside a JAR is
+not a classpath entry; the JVM never sees those classes. In addition, the packages are disjoint per payload
+(`OMNI-1044`), so not even an accidental FQCN collision is possible. (Chapters 5.1, 13.2, 14.2)
 
 ---
 
-### 7. Wie funktionieren unterschiedliche Refmaps?
+### 5. How are different Java class file versions handled?
 
-Ein Refmap pro Payload, erzeugt vom Mixin-Annotation-Processor während des jeweiligen Loom-Compiles, mit dem
-eindeutigen Namen `<modId>-<payloadId>-refmap.json` (vom Plugin über
-`loom.mixin.defaultRefmapName` gesetzt) und nur von den Mixin-Configs dieses Payloads referenziert. Refmaps
-werden **niemals** gemergt — dasselbe Named-Symbol kann in verschiedenen Versionen auf verschiedene
-Intermediary-Namen und Deskriptoren zeigen. Der Validator prüft Existenz, Gültigkeit, Namenseindeutigkeit über
-alle Payloads und dass alle Refmap-Keys Klassen dieses Payloads sind (`OMNI-1030–1033`). Im Dev-Runtime übernimmt
-Fabrics `MixinIntermediaryDevRemapper` die Umkehrung. (Kapitel 5.3.3, 15.5)
+Every payload is compiled to the Java level of its MC version (61 for 1.20.1, 65 for 1.21.x, **69 for 26.1**) and
+declares `depends: {"java": ">=17"}` resp. `">=21"` resp. `">=25"`. The loader evaluates the synthetic mod candidate
+`java` as a hard solver clause. The container itself is compiled at the **minimum** of the matrix (61 in the
+example) and declares `depends.java >=17`.
 
----
-
-### 8. Wie werden Access Widener behandelt?
-
-Ein Access Widener **pro Payload**, weil ein Payload eine eigene Fabric-Mod ist und Fabrics Regel „eine
-AW-Datei pro Mod“ damit pro Payload gilt. Loom remappt die Datei beim `remapJar` in den
-`intermediary`-Namespace. Der Loader merged die AW-Dateien aller geladenen Mods — da nur ein Payload geladen ist,
-ist genau ein mod-eigener AW aktiv.
-
-Gemeinsame Einträge dürfen in `common/src/main/accesswidener/shared.accesswidener` (Namespace `named`) stehen und
-werden zur Build-Zeit **vor** dem Remap mit der payloadspezifischen Datei gemergt (dedupliziert, sortiert, mit
-Quellenkommentar). Der Container deklariert keinen AW (`OMNI-1024`). Empfohlene Alternative für Einzelfälle:
-Mixin-`@Accessor`/`@Invoker`. (Kapitel 5.4, 17)
+The validator reads the class file header (bytes 4–7) of **every** class and checks: container ≤ baseline
+(`OMNI-1040`), payload == the declared major (`OMNI-1041`), major ↔ `requires.java` consistent (`OMNI-1046`),
+baseline == the minimum (`OMNI-1047`). Multi-release structures are forbidden (`OMNI-1049`). (Chapter 14)
 
 ---
 
-### 9. Wie werden unterschiedliche Yarn-/Intermediary-Mappings behandelt?
+### 6. How do mixins work, given that Fabric loads mixins very early?
 
-Jedes Payload ist ein eigenständiger Loom-Build mit eigener MC-Version und eigenen Mappings; Payloads teilen
-keinen Bytecode. Der Mapping-Provider ist pro Payload frei wählbar (`yarn:<build>`, `mojang`, `layered:…`,
-`parchment:…`) — auch gemischt. Publiziert wird jedes Payload im `intermediary`-Namespace. Der Container ist
-namespace-neutral, weil er keine Minecraft-Referenz enthält (`OMNI-1042`).
+Precisely **because** Fabric loads early, mixins belong in the payload mod: in phase 2.4 Fabric registers the
+`mixins` configs of **all selected mods**. A payload that was not selected has no registered config; Sponge Mixin
+therefore never reads its mixin classes, never resolves a `ClassInfo` and never validates a target. For the active
+payload everything runs exactly as for a normal mod — including the correct `compatibilityLevel` per Java version.
 
-Wichtig: Intermediary garantiert **Namens-**, nicht **Signaturstabilität**. Genau deshalb ist „ein Kompilat für
-alle Versionen“ prinzipiell unmöglich und die Payload-Trennung notwendig. (Kapitel 15)
-
----
-
-### 10. Werden Payloads bereits remapped in die Universal-JAR eingebettet?
-
-Ja. Reihenfolge: `compileJava` (named) → `remapJar` (named → intermediary, inklusive AW und Refmap-Zielen) →
-`omniPayload` (Metadaten + gemergte Ressourcen einfügen, keine Bytecode-Änderung) → `assembleUniversalJar`
-(Einbettung als **STORED**-ZIP-Eintrag). Zur Laufzeit findet in Produktion **kein** weiterer Remap statt. Nur im
-Loom-Dev-Run remappt Fabrics `RuntimeModRemapper` intermediary → named — Standardverhalten für jede externe Mod.
-(Kapitel 15.2, 23.1)
+A runtime “mixin dispatcher” deliberately does not exist: after phase 2.4 no config can meaningfully be added, and
+`IMixinConfigPlugin#shouldApplyMixin` prevents only the *application*, not the *loading and validation*.
+(Chapters 5.3, 16.1, 16.8)
 
 ---
 
-### 11. Liegen Payload-Klassen auf dem normalen Knot-Classpath?
+### 7. How do different refmaps work?
 
-Ja — die des **aktiven** Payloads. Der Loader extrahiert das ausgewählte genestete JAR nach
-`<gameDir>/.fabric/processedMods/` und fügt es dem `KnotClassLoader` als Classpath-Eintrag hinzu. Damit greifen
-Access Widener und Mixin-Transformation regulär, und Payload-Klassen sehen Minecraft, Fabric API, die Runtime und
-den Container-Common ohne Vermittlung. Klassen inaktiver Payloads liegen auf **keinem** Classpath. (Kapitel 13.2,
-13.3)
-
----
-
-### 12. Wird ein eigener ClassLoader benötigt?
-
-**Nein.** FabricMultiLoader erzeugt an keiner Stelle einen ClassLoader — das ist eine harte Invariante (I1,
-ADR-002), erzwungen durch Validator-Regel 32 (`OMNI-1036`, verbietet Referenzen auf ClassLoader-Konstruktoren,
-`URLClassLoader` und `net.fabricmc.loader.impl.**`). Ein eigener ClassLoader würde die Knot-Transformerkette
-umgehen, wodurch Mixins und Access Widener wirkungslos wären, und Class-Identity-Brüche an jeder
-Minecraft-Typgrenze erzeugen.
-
-Einzige Ausnahme im gesamten Projekt: der Loader-Conformance-Test-Harness lädt verschiedene
-Fabric-Loader-Versionen in isolierte `URLClassLoader` — reiner Testcode, nicht ausgeliefert. (Kapitel 6.4, 13.1)
+One refmap per payload, produced by the Mixin annotation processor during that payload's Loom compilation, with the
+unique name `<modId>-<payloadId>-refmap.json` (set by the plugin via `loom.mixin.defaultRefmapName`), referenced
+only by that payload's mixin configs. Refmaps are **never** merged — the same named symbol can map to different
+intermediary names and descriptors in different versions. The validator checks existence, validity, name uniqueness
+across all payloads, and that all refmap keys are classes of that payload (`OMNI-1030–1033`). In the dev runtime,
+Fabric's `MixinIntermediaryDevRemapper` performs the inverse. (Chapters 5.3.3, 15.5)
 
 ---
 
-### 13. Falls ja: Wie greifen diese Klassen korrekt auf Minecraft- und Fabric-Klassen des Knot-ClassLoaders zu?
+### 8. How are access wideners handled?
 
-Die Frage entfällt, weil kein eigener ClassLoader existiert. Payload-Klassen werden vom `KnotClassLoader` selbst
-definiert und greifen deshalb direkt und ohne Delegationsregeln auf Minecraft- und Fabric-Klassen zu — identisch
-zu jeder normalen Fabric-Mod. (Kapitel 13.2)
+One access widener **per payload**, because a payload is its own Fabric mod and Fabric's “one AW file per mod” rule
+therefore applies per payload. Loom remaps the file into the `intermediary` namespace during `remapJar`. The loader
+merges the AW files of all loaded mods — and since only one payload is loaded, exactly one mod-owned AW is active.
 
----
-
-### 14. Wie verhindert man ClassIdentity-Probleme?
-
-Strukturell: Es gibt genau einen ClassLoader, der Minecraft, Fabric API, Runtime, Container-Common und das aktive
-Payload definiert. Jeder Typ existiert damit genau einmal; `ClassCastException` zwischen „zwei Versionen derselben
-Klasse“ ist unmöglich.
-
-Der einzige real verbleibende Kollisionsfall ist „zwei Mods liefern Klassen mit gleichem FQCN“ (Classpath-
-First-Wins). Er wird beseitigt, indem die Library als eigene genestete Mod `fabricmultiloader` ausgeliefert wird
-und der Loader nach Mod-ID auf die höchste kompatible Version dedupliziert — deterministisch statt
-classpathabhängig. Ein Major-Wechsel erhält eine neue Mod-ID und ein neues Package
-(`fabricmultiloader2` / `dev.fabricmultiloader.v2`), sodass 1.x und 2.x koexistieren. Zusätzlich warnt die
-Runtime (`OMNI-2050`), wenn ihre eigenen Klassen aus einer unerwarteten JAR stammen. (Kapitel 13.4, 39.7, 42.3,
-ADR-008)
+Shared entries may live in `common/src/main/accesswidener/shared.accesswidener` (namespace `named`) and are merged
+with the payload-specific file at build time **before** the remap (deduplicated, sorted, with a source comment). The
+container declares no AW (`OMNI-1024`). The recommended alternative for individual cases: Mixin `@Accessor`/
+`@Invoker`. (Chapters 5.4, 17)
 
 ---
 
-### 15. Wie funktioniert Inter-Mod-Kommunikation?
+### 9. How are different Yarn/intermediary mappings handled?
 
-Auf drei Wegen, alle über die **Container**-Mod-ID (Payload-IDs sind Implementierungsdetail und dürfen von
-Dritten nicht referenziert werden):
+Every payload is a standalone Loom build with its own MC version and its own mappings; payloads share no bytecode.
+The mapping provider is freely selectable per payload (`yarn:<build>`, `mojang`, `layered:…`, `parchment:…`) — even
+mixed. Every payload is published in the `intermediary` namespace. The container is namespace-neutral, because it
+contains no Minecraft reference (`OMNI-1042`).
 
-1. **`FabricLoader.isModLoaded("examplemod")`** — funktioniert unverändert, weil der Container die primäre
-   Mod-ID trägt.
-2. **Öffentliche Mod-API im Container**: `com.example.common.api.*` liegt im Container, ist also über alle
-   MC-Versionen **dasselbe Kompilat**. Drittmods kompilieren einmal gegen `com.example:examplemod-api:2.0.0`
-   (`compileOnly`) und funktionieren auf jeder MC-Version. Das ist ein Vorteil, den eine klassische
-   Ein-JAR-pro-Version-Veröffentlichung nicht bietet.
-3. **`FabricLoader.getObjectShare()`**: Der Container veröffentlicht `"examplemod:api"` (Implementierung) und
-   `"examplemod:omni"` (`ContainerHandle` für Diagnose) — nutzbar ohne Compile-Abhängigkeit.
-
-Zusätzlich stehen Fabric-API-Events, Registries, Networking und Commands unverändert zur Verfügung; für andere
-Mods ist eine Universal-Mod von einer normalen nicht unterscheidbar. (Kapitel 19.9, 24.7, 30.5)
+Important: intermediary guarantees **name** stability, not **signature** stability. That is exactly why “one
+compilation for all versions” is impossible in principle and why payload separation is necessary. (Chapter 15)
 
 ---
 
-### 16. Wie sieht `FabricLoader.isModLoaded()` für andere Mods aus?
+### 10. Are payloads embedded into the universal JAR already remapped?
 
-| Abfrage | Ergebnis |
+Yes. The order is: `compileJava` (named) → `remapJar` (named → intermediary, including the AW and the refmap
+targets) → `omniPayload` (inserting metadata and merged resources, no bytecode change) → `assembleUniversalJar`
+(embedded as a **STORED** ZIP entry). At runtime no further remap happens in production. Only in a Loom dev run does
+Fabric's `RuntimeModRemapper` remap intermediary → named — standard behaviour for any external mod.
+(Chapters 15.2, 23.1)
+
+---
+
+### 11. Do payload classes sit on the normal Knot classpath?
+
+Yes — those of the **active** payload. The loader extracts the selected nested JAR into
+`<gameDir>/.fabric/processedMods/` and adds it to `KnotClassLoader` as a classpath entry. Access wideners and mixin
+transformation therefore apply normally, and payload classes see Minecraft, Fabric API, the runtime and the
+container common code without mediation. Classes of inactive payloads sit on **no** classpath. (Chapters 13.2, 13.3)
+
+---
+
+### 12. Is a custom ClassLoader required?
+
+**No.** FabricMultiLoader creates no ClassLoader anywhere — that is a hard invariant (I1, ADR-002), enforced by
+validator rule 32 (`OMNI-1036`, forbidding references to ClassLoader constructors, `URLClassLoader` and
+`net.fabricmc.loader.impl.**`). A custom ClassLoader would bypass Knot's transformer chain, rendering mixins and
+access wideners ineffective, and would produce class identity breaks at every Minecraft type boundary.
+
+The only exception in the entire project: the loader conformance test harness loads different Fabric Loader versions
+into isolated `URLClassLoader`s — pure test code, not shipped. (Chapters 6.4, 13.1)
+
+---
+
+### 13. If so: how do those classes correctly access Minecraft and Fabric classes of the Knot ClassLoader?
+
+The question does not arise, because there is no custom ClassLoader. Payload classes are defined by
+`KnotClassLoader` itself and therefore access Minecraft and Fabric classes directly and without delegation rules —
+identically to any normal Fabric mod. (Chapter 13.2)
+
+---
+
+### 14. How are class identity problems prevented?
+
+Structurally: there is exactly one ClassLoader defining Minecraft, Fabric API, the runtime, the container common
+code and the active payload. Every type therefore exists exactly once; a `ClassCastException` between “two versions
+of the same class” is impossible.
+
+The only collision case that really remains is “two mods ship classes with the same FQCN” (classpath first-wins).
+It is eliminated by shipping the library as its own nested mod `fabricmultiloader` and letting the loader
+deduplicate by mod ID to the highest compatible version — deterministic rather than classpath-dependent. A major
+transition receives a new mod ID and package (`fabricmultiloader2` / `dev.fabricmultiloader.v2`) so 1.x and 2.x
+coexist. Additionally the runtime warns (`OMNI-2050`) when its own classes come from an unexpected JAR.
+(Chapters 13.4, 39.7, 42.3, ADR-008)
+
+---
+
+### 15. How does inter-mod communication work?
+
+In three ways, all via the **container** mod ID (payload IDs are an implementation detail and must not be referenced
+by third parties):
+
+1. **`FabricLoader.isModLoaded("examplemod")`** — works unchanged, because the container carries the primary mod ID.
+2. **The public mod API in the container**: `com.example.common.api.*` lives in the container and is therefore
+   **the same compilation** across all MC versions. Third-party mods compile once against
+   `com.example:examplemod-api:2.0.0` (`compileOnly`) and work on every MC version. That is an advantage a classic
+   one-JAR-per-version release does not offer.
+3. **`FabricLoader.getObjectShare()`**: the container publishes `"examplemod:api"` (the implementation) and
+   `"examplemod:omni"` (a `ContainerHandle` for diagnostics) — usable without a compile dependency.
+
+Fabric API events, registries, networking and commands remain available unchanged; to other mods a universal mod is
+indistinguishable from a normal one. (Chapters 19.9, 24.7, 30.5)
+
+---
+
+### 16. What does `FabricLoader.isModLoaded()` look like for other mods?
+
+| Query | Result |
 |---|---|
-| `isModLoaded("examplemod")` | `true`, sobald der Container geladen ist — also auf jeder MC-Version innerhalb der deklarierten Union |
-| `isModLoaded("examplemod-mc1214")` | `true` nur auf 1.21.4; **nicht** von Dritten zu verwenden |
-| `isModLoaded("examplemod-impl")` (Alias) | `true`, wenn irgendein Payload aktiv ist; intern |
-| `isModLoaded("fabricmultiloader")` | `true`, sobald mindestens eine Universal-Mod installiert ist |
+| `isModLoaded("examplemod")` | `true` as soon as the container is loaded — i.e. on every MC version inside the declared union |
+| `isModLoaded("examplemod-mc1214")` | `true` only on 1.21.4; **not** to be used by third parties |
+| `isModLoaded("examplemod-impl")` (the alias) | `true` when any payload is active; internal |
+| `isModLoaded("fabricmultiloader")` | `true` as soon as at least one universal mod is installed |
 
-Ehrliche Einschränkung: Wenn die MC-Version in der Union liegt, aber eine Nebenbedingung scheitert (z. B. Fabric
-API zu alt), lädt der Container und `isModLoaded("examplemod")` ist `true`, obwohl keine Funktionalität aktiv
-ist. Im Standardmodus (`strict = true`) ist dieser Zustand nicht beobachtbar, weil `preLaunch` das Spiel mit
-`OMNI-2003` abbricht. Nur im ausdrücklich gewählten `strict = false`-Modus bleibt er bestehen; dafür existiert
-`FabricMultiLoader.isActive("examplemod")` als präzise Abfrage, und die Doku empfiehlt sie Integratoren.
-(Kapitel 18.1, 29.5, 30.5)
-
----
-
-### 17. Wie werden unterschiedliche Fabric-API-Versionen gehandhabt?
-
-Pro Payload. Jedes Payload deklariert seine eigene Mindestversion in seiner `fabric.mod.json`
-(`"fabric-api": ">=0.114.0"`) und in `requires.mods` seines Deskriptors. Der Container deklariert Fabric API
-lediglich als `recommends: "*"` — nicht als `depends`, weil die konkrete Anforderung payloadabhängig ist.
-
-Ist Fabric API zu alt, wird das Payload vom Solver verworfen, der Container lädt, und unsere `preLaunch`-Diagnose
-nennt exakt „fabric-api >=0.114.0 — REJECTED: 0.110.0 installed“ samt Downloadlink. Für Mods, die nur einzelne
-Fabric-API-Module brauchen, gibt es `fabricApiMode = MODULES`: Dann werden Modul-IDs
-(`fabric-networking-api-v1` …) statt der Aggregat-ID deklariert. Compile-seitig wird pro Version-Modul die in der
-Matrix hinterlegte Fabric-API-Version verwendet. (Kapitel 12.4, 20.3, 24.2, 29.2)
+An honest caveat: when the MC version lies inside the union but a side condition fails (e.g. Fabric API too old),
+the container loads and `isModLoaded("examplemod")` is `true` even though no functionality is active. In the default
+mode (`strict = true`) this state is unobservable, because `preLaunch` aborts the game with `OMNI-2003`. It persists
+only in the explicitly chosen `strict = false` mode; for that, `FabricMultiLoader.isActive("examplemod")` exists as
+the precise query, and the documentation recommends it to integrators. (Chapters 18.1, 29.5, 30.5)
 
 ---
 
-### 18. Wie funktionieren Client-/Server-spezifische Klassen?
+### 17. How are different Fabric API versions handled?
 
-Auf drei Ebenen, die kombiniert werden:
+Per payload. Every payload declares its own minimum version in its `fabric.mod.json`
+(`"fabric-api": ">=0.114.0"`) and in the `requires.mods` of its descriptor. The container declares Fabric API only
+as `recommends: "*"` — not as `depends`, because the concrete requirement is payload-dependent.
 
-1. **Payload-Ebene**: `"environment": "client"` bzw. `"server"` in der Payload-`fabric.mod.json`. Ein
-   Client-Payload wird auf einem dedizierten Server gar nicht geladen — inklusive Mixins, AW und Ressourcen.
-2. **Mixin-Config-Ebene**: `{"config": "…client.mixins.json", "environment": "client"}` verhindert die
-   Registrierung auf dem Server, sodass Mixin die Klassen nie liest.
-3. **Code-Ebene**: getrennte Entrypoints (`UniversalClientMod`/`UniversalServerMod`) und getrennte Packages
-   (`…<payloadId>.client.**`, in `clientOnlyPackages` deklariert). Der Validator prüft statisch, dass keine vom
-   `common`-Entrypoint erreichbare Klasse ein Client-Package referenziert (`OMNI-1150`) und dass
-   `net/minecraft/client/**`-Referenzen nur in Client-Packages vorkommen (`OMNI-1045`).
-
-Die physische Seite ist zur Laufzeit über `ctx.side()` abfragbar. (Kapitel 26)
+If Fabric API is too old, the payload is discarded by the solver, the container loads, and our `preLaunch`
+diagnostics state exactly “fabric-api >=0.114.0 — REJECTED: 0.110.0 installed” together with a download link. For
+mods that need only individual Fabric API modules there is `fabricApiMode = MODULES`: module IDs
+(`fabric-networking-api-v1`, …) are then declared instead of the aggregate ID. On the compile side, each version
+module uses the Fabric API version recorded in the matrix. (Chapters 12.4, 20.3, 24.2, 29.2)
 
 ---
 
-### 19. Was passiert bei einer nicht unterstützten Minecraft-Version?
+### 18. How do client-/server-specific classes work?
 
-Zwei klar getrennte Fälle:
+On three combined levels:
 
-1. **MC außerhalb der Union**: Fabrics eigener Resolver lehnt den Container ab und zeigt seine lokalisierte
-   Fehler-GUI (Client) bzw. eine formatierte Konsolenmeldung (Server) mit den erlaubten Bereichen. Kein
-   FabricMultiLoader-Code läuft; es kann per Konstruktion keinen Mixin- oder JVM-Fehler geben.
-2. **MC in der Union, aber kein Payload wählbar** (Fabric API zu alt, Java zu alt, Fremdmod fehlt,
-   Client-Payload auf Server): Der Container lädt, und `ContainerPreLaunch` erzeugt den Bericht `OMNI-2003` mit
-   erkannter Umgebung, jedem Payload, jedem Constraint und dessen Auswertung, der Liste unterstützter
-   MC-Versionen und konkreten Handlungsanweisungen mit Links (Beispiel in Kapitel 29.2). Im Standardmodus bricht
-   der Start ab; mit `-Dfabricmultiloader.strict=false` läuft das Spiel weiter und die Mod bleibt deaktiviert
-   (`OMNI-2101`).
+1. **Payload level**: `"environment": "client"` resp. `"server"` in the payload `fabric.mod.json`. A client payload
+   is not loaded at all on a dedicated server — including its mixins, AW and resources.
+2. **Mixin config level**: `{"config": "…client.mixins.json", "environment": "client"}` prevents registration on the
+   server, so Mixin never reads the classes.
+3. **Code level**: separate entrypoints (`UniversalClientMod`/`UniversalServerMod`) and separate packages
+   (`…<payloadId>.client.**`, declared in `clientOnlyPackages`). The validator checks statically that no class
+   reachable from the `common` entrypoint references a client package (`OMNI-1150`) and that
+   `net/minecraft/client/**` references occur only in client packages (`OMNI-1045`).
 
-In keinem Fall entsteht ein nackter `NoClassDefFoundError` oder ein Mixin-Stacktrace. Ein Integrationstest
-(`itest unsupported`) prüft das automatisiert und lässt den Build fehlschlagen, wenn im Log ein
-`NoClassDefFoundError` erscheint. (Kapitel 9.9, 29.2, 32.5)
+The physical side is queryable at runtime via `ctx.side()`. (Chapter 26)
 
 ---
 
-### 20. Wie groß ist der technische Mindestumfang einer Universal-JAR?
+### 19. What happens on an unsupported Minecraft version?
 
-| Bestandteil | Größe |
+Two clearly separated cases:
+
+1. **MC outside the union**: Fabric's own resolver rejects the container and shows its localised error GUI (client)
+   resp. a formatted console message (server) listing the permitted ranges. No FabricMultiLoader code runs; by
+   construction there can be no mixin or JVM error.
+2. **MC inside the union but no payload selectable** (Fabric API too old, Java too old, a foreign mod missing, a
+   client payload on a server): the container loads and `ContainerPreLaunch` produces the report `OMNI-2003` with
+   the detected environment, every payload, every constraint and its evaluation, the list of supported MC versions
+   and concrete instructions with links (the example in chapter 29.2). In the default mode the start aborts; with
+   `-Dfabricmultiloader.strict=false` the game continues and the mod stays deactivated (`OMNI-2101`).
+
+In neither case does a bare `NoClassDefFoundError` or a mixin stack trace appear. An integration test
+(`itest unsupported`) checks this automatically and fails the build if a `NoClassDefFoundError` appears in the log.
+(Chapters 9.9, 29.2, 32.5)
+
+---
+
+### 20. What is the minimum technical size of a universal JAR?
+
+| Component | Size |
 |---|---|
-| `fabric.mod.json` (generiert) | ~1,2 KiB |
-| `META-INF/omni-container.json` (1 Payload) | ~1,8 KiB |
-| `META-INF/MANIFEST.MF` | ~0,3 KiB |
-| `fabricmultiloader-runtime-1.0.0.jar` (enthält `format` + `api` + `runtime`) | ~62 KiB |
-| **Overhead ohne Modinhalt** | **≈ 66 KiB** (NF-03: < 80 KiB erfüllt) |
-| plus Payload-Minimum (eine Adapter-Klasse, eine Factory, generierte Metadaten) | ~6 KiB |
-| **Kleinstmögliche funktionsfähige Universal-JAR** | **≈ 72 KiB** |
+| `fabric.mod.json` (generated) | ~1.2 KiB |
+| `META-INF/omni-container.json` (1 payload) | ~1.8 KiB |
+| `META-INF/MANIFEST.MF` | ~0.3 KiB |
+| `fabricmultiloader-runtime-1.0.0.jar` (contains `format` + `api` + `runtime`) | ~62 KiB |
+| **Overhead without mod content** | **≈ 66 KiB** (NF-03: < 80 KiB satisfied) |
+| plus the payload minimum (one adapter class, one factory, generated metadata) | ~6 KiB |
+| **The smallest possible functioning universal JAR** | **≈ 72 KiB** |
 
-Der Runtime-Anteil wird über die Loader-Deduplizierung nur **einmal pro Spiel** geladen, auch wenn 40
-Universal-Mods installiert sind. (Kapitel 40.4)
-
----
-
-### 21. Kann die Universal-JAR Minecraft-Versionen mit unterschiedlichen erforderlichen Java-Hauptversionen enthalten?
-
-Ja, uneingeschränkt. Die Referenzmatrix enthält bewusst drei: Java 17 (1.20.1), Java 21 (1.21.x) und **Java 25
-(26.1)** — Classfile-Majors 61, 65, 69 in einer Datei. Die Auswahl trifft der Loader über `depends.java`; der
-Container wird auf dem Minimum kompiliert und deklariert `depends.java >=17`, damit er auf der ältesten Umgebung
-lädt. Der Validator erzwingt die Konsistenz von Bytecode-Level, `classfileMajor`-Angabe und `requires.java`
-(`OMNI-1041/1046/1047`). Ein neuer Java-Sprung kostet den Modautor genau einen Matrix-Eintrag. (Kapitel 14,
-37.4)
+Thanks to loader deduplication, the runtime portion is loaded only **once per game**, even with 40 universal mods
+installed. (Chapter 40.4)
 
 ---
 
-### 22. Falls eine alte JVM die JAR öffnet: Wie verhindert man `UnsupportedClassVersionError` durch Payloads für neuere Java-Versionen?
+### 21. Can the universal JAR contain Minecraft versions with different required Java major versions?
 
-Der Fehler entsteht ausschließlich in `ClassLoader#defineClass`, also beim **Definieren** einer Klasse — nicht
-beim Öffnen einer JAR und nicht beim Lesen eines ZIP-Eintrags. Die Kette ist lückenlos:
-
-1. Fabrics `ModDiscoverer` liest von genesteten JARs **nur** `fabric.mod.json` — eine Textdatei. Keine
-   Bytecode-Inspektion, kein ASM, keine Classfile-Versionsprüfung.
-2. Der Solver verwirft das Java-25-Payload auf einer Java-17-JVM, weil `depends: {"java": ">=25"}` unerfüllbar
-   ist.
-3. Verworfene Payloads werden nicht extrahiert und dem Classpath nicht hinzugefügt.
-4. Folglich wird keine ihrer Klassen je definiert.
-
-Zusätzliche Absicherung zur Build-Zeit: Der Validator prüft, dass kein Payload einen Classfile-Major hat, der
-höher ist, als seine `requires.java`-Untergrenze erlaubt (`OMNI-1046`) — der einzige Weg, wie dieser Fehler
-entstehen könnte, ist damit ausgeschlossen, bevor die Datei existiert. Und der Container, dessen Klassen
-tatsächlich auf der ältesten JVM definiert werden, wird auf Classfile-Ebene vollständig gescannt
-(`OMNI-1040`). (Kapitel 5.5.1, 14.2, 14.4)
+Yes, without restriction. The reference matrix deliberately contains three: Java 17 (1.20.1), Java 21 (1.21.x) and
+**Java 25 (26.1)** — class file majors 61, 65 and 69 in one file. The loader makes the selection via `depends.java`;
+the container is compiled at the minimum and declares `depends.java >=17` so it loads in the oldest environment. The
+validator enforces consistency between the bytecode level, the `classfileMajor` declaration and `requires.java`
+(`OMNI-1041/1046/1047`). A new Java jump costs the mod author exactly one matrix entry. (Chapters 14, 37.4)
 
 ---
 
-### 23. Welche Teile müssen zwingend auf dem kleinsten gemeinsamen Java-Level kompiliert werden?
+### 22. If an old JVM opens the JAR: how is an `UnsupportedClassVersionError` from payloads for newer Java versions prevented?
 
-| Artefakt | Ziel | Grund |
+The error arises exclusively in `ClassLoader#defineClass`, i.e. when **defining** a class — not when opening a JAR
+and not when reading a ZIP entry. The chain is airtight:
+
+1. Fabric's `ModDiscoverer` reads **only** `fabric.mod.json` from nested JARs — a text file. No bytecode inspection,
+   no ASM, no class file version check.
+2. The solver discards the Java 25 payload on a Java 17 JVM, because `depends: {"java": ">=25"}` is unsatisfiable.
+3. Discarded payloads are not extracted and not added to the classpath.
+4. Consequently none of their classes is ever defined.
+
+Additional build-time safeguard: the validator checks that no payload has a class file major higher than its
+`requires.java` lower bound permits (`OMNI-1046`) — the only way this error could arise is therefore ruled out before
+the file exists. And the container, whose classes really are defined on the oldest JVM, is fully scanned at the class
+file level (`OMNI-1040`). (Chapters 5.5.1, 14.2, 14.4)
+
+---
+
+### 23. Which parts must mandatorily be compiled at the lowest common Java level?
+
+| Artifact | Target | Reason |
 |---|---|---|
-| `fabricmultiloader-format` | Classfile 52 (Java 8) | wird von Runtime **und** Gradle-Plugin genutzt und muss auf jeder unterstützten JVM laden |
-| `fabricmultiloader-api` | 52 | von Common-Code und allen Payloads referenziert |
-| `fabricmultiloader-runtime` | 52 | Bootstrap läuft auf der ältesten JVM |
-| `fabricmultiloader-processor` | 52 | Annotation Processor |
-| Container-Common des Mods | `baselineJava` = Minimum der Matrix (im Beispiel 61/Java 17) | wird auf der ältesten unterstützten MC-Version geladen |
-| Payloads | jeweils ihr eigenes Level (61/65/69) | werden nur auf passenden JVMs geladen |
+| `fabricmultiloader-format` | class file 52 (Java 8) | used by both the runtime **and** the Gradle plugin and must load on every supported JVM |
+| `fabricmultiloader-api` | 52 | referenced by common code and all payloads |
+| `fabricmultiloader-runtime` | 52 | the bootstrap runs on the oldest JVM |
+| `fabricmultiloader-processor` | 52 | annotation processor |
+| the mod's container common code | `baselineJava` = the minimum of the matrix (61/Java 17 in the example) | loaded on the oldest supported MC version |
+| payloads | their own level each (61/65/69) | loaded only on matching JVMs |
 
-Durchgesetzt mit `--release` (nicht `targetCompatibility`), damit auch die verwendete **API** gegen das Ziel-JDK
-geprüft wird, und zusätzlich durch den Classfile-Scan des Validators. Praktische Folge: In `format`/`api`/
-`runtime` sind Records, `var`, `sealed`, Switch-Expressions und `List.of` verboten; kompensiert durch
-Builder-Pattern. (Kapitel 5.5.2, 14.2, 14.7)
+Enforced with `--release` (not `targetCompatibility`), so the **API** used is also checked against the target JDK,
+and additionally by the validator's class file scan. Practical consequence: records, `var`, `sealed`, switch
+expressions and `List.of` are forbidden in `format`/`api`/`runtime`; compensated by the builder pattern.
+(Chapters 5.5.2, 14.2, 14.7)
 
 ---
 
-### 24. Wie wird eine neue Minecraft-Version hinzugefügt?
+### 24. How is a new Minecraft version added?
 
-Ein Befehl, dann die echte Anpassungsarbeit:
+One command, then the real adaptation work:
 
 ```bash
 ./gradlew addMinecraftVersion --id=mc261 --mc=26.1 --range=">=26.1 <26.2" \
     --yarn=26.1+build.1 --loader=0.17.0 --fabric-api=0.130.0+26.1 --java=25 --copy-from=mc1214
 ```
 
-Der Task erzeugt: Matrixeintrag in `gradle/fabricmultiloader.toml`, `versions/mc-26.1/build.gradle.kts`,
-Quellverzeichnisse, kopierten und **umbenannten** Adaptercode (`com.example.mc1214` → `com.example.mc261`,
-`Platform1214` → `Platform261`), Mixin-Configs mit angepasstem `package`/`refmap`/`compatibilityLevel`
-(`JAVA_25`), AW-Stub und den CI-Matrixeintrag. Er prüft die Disjunktheit der neuen Range gegen alle bestehenden
-und bricht sonst mit `OMNI-1010` ab.
+The task produces: the matrix entry in `gradle/fabricmultiloader.toml`, `versions/mc-26.1/build.gradle.kts`, the
+source directories, the copied and **renamed** adapter code (`com.example.mc1214` → `com.example.mc261`,
+`Platform1214` → `Platform261`), mixin configs with adjusted `package`/`refmap`/`compatibilityLevel` (`JAVA_25`), an
+AW stub and the CI matrix entry. It checks the disjointness of the new range against all existing ones and otherwise
+aborts with `OMNI-1010`.
 
-Danach: `:versions:mc-26.1:build` (jeder Compilerfehler ist eine echte API-Änderung), `runClient261`,
-`runDatagen261`, `buildUniversalJar`, `validateUniversalJar`, `integrationTestMc261`, `capabilities` aktualisieren.
-**Bestehende Payloads werden nicht angefasst**, und die Container-Baseline bleibt beim Minimum (17), sodass die
-Mod auf 1.20.1/Java 17 unverändert weiterläuft. (Kapitel 37)
+Then: `:versions:mc-26.1:build` (every compiler error is a real API change), `runClient261`, `runDatagen261`,
+`buildUniversalJar`, `validateUniversalJar`, `integrationTestMc261`, and updating `capabilities`.
+**Existing payloads are not touched**, and the container baseline stays at the minimum (17), so the mod keeps
+working unchanged on 1.20.1/Java 17. (Chapter 37)
 
 ---
 
-### 25. Welche Bereiche können nicht vollständig abstrahiert werden?
+### 25. Which areas cannot be fully abstracted?
 
-Ehrliche Liste. Für diese Bereiche gibt es **keine** versionsneutrale Common-API; sie leben im Payload und werden
-über `Services`, `Capabilities` und Common-Hooks angebunden:
+An honest list. For these areas there is **no** version-neutral common API; they live in the payload and are wired
+up via `Services`, `Capabilities` and common hooks:
 
-| Bereich | Grund |
+| Area | Reason |
 |---|---|
-| **Rendering** (`DrawContext`, `MatrixStack`, `RenderLayer`, Shader-Pipeline, `HudRenderCallback`) | Signaturen und Konzepte ändern sich fast jede Version; ab 1.21.x mehrfach umgebaut |
-| **Mixins** | Sind per Definition an konkrete Targets und Deskriptoren gebunden |
-| **Weltgenerierung** (`ConfiguredFeature`, `PlacedFeature`, Biome-Modifikation, `Codec`-Registrierungen) | Registry- und Codec-Umbauten pro Version |
-| **NBT/Datenkomponenten** | 1.20.5 hat NBT-Item-Daten durch Komponenten ersetzt — kein gemeinsames Modell möglich; über `Capabilities.COMPONENTS` gekapselt |
-| **Codecs/Serialisierung** (`Codec`, `PacketCodec`, `StreamCodec`) | Typsystem und Registry-Bindung versionsabhängig |
-| **DataFixerUpper / Schema-Migration** | An Mojangs Versionsschemata gebunden |
-| **Paketformate und Registry-Sync** | Protokoll ändert sich pro Version; abstrahiert wird nur der *Nutzdatenpfad* (`ByteSink`/`ByteSource`), nicht das Protokoll |
-| **GUI-Layout und Screen-Klassen** | Klassenhierarchie und Layoutmodell ändern sich |
-| **Entity-/Block-Attribute und -Verhalten in der Tiefe** | Nur einfache Fälle sind über `ItemSpec`/`BlockSpec` deklarativ abbildbar |
-| **Datagen-Provider** | `FabricDataGenerator`-API versionsabhängig; abstrahiert werden nur die *Eingabedaten* (`RecipeSpec`, `LootSpec`) |
-| **Core-Transformationen jenseits von Mixin** | Fabric bietet keine öffentliche Transformer-API — auch ohne FabricMultiLoader nicht |
+| **Rendering** (`DrawContext`, `MatrixStack`, `RenderLayer`, the shader pipeline, `HudRenderCallback`) | Signatures and concepts change almost every version; rebuilt several times from 1.21.x onwards |
+| **Mixins** | By definition bound to concrete targets and descriptors |
+| **World generation** (`ConfiguredFeature`, `PlacedFeature`, biome modification, `Codec` registrations) | Registry and codec overhauls per version |
+| **NBT/data components** | 1.20.5 replaced NBT item data with components — no common model is possible; encapsulated via `Capabilities.COMPONENTS` |
+| **Codecs/serialisation** (`Codec`, `PacketCodec`, `StreamCodec`) | Type system and registry binding are version-dependent |
+| **DataFixerUpper / schema migration** | Tied to Mojang's version schemas |
+| **Packet formats and registry sync** | The protocol changes per version; only the *payload data path* (`ByteSink`/`ByteSource`) is abstracted, not the protocol |
+| **GUI layout and screen classes** | Class hierarchy and layout model change |
+| **Entity/block attributes and behaviour in depth** | Only simple cases are declaratively expressible via `ItemSpec`/`BlockSpec` |
+| **Datagen providers** | The `FabricDataGenerator` API is version-dependent; only the *input data* (`RecipeSpec`, `LootSpec`) is abstracted |
+| **Core transformations beyond Mixin** | Fabric offers no public transformer API — not even without FabricMultiLoader |
 
-Abstrahiert und stabil sind hingegen: Lifecycle, Logging, Config, Pfade, Registrierung einfacher Inhalte
-(Items, Blöcke, Sounds, Item-Gruppen), Commands, Networking-Nutzdaten, die stabilen Fabric-API-Events, Ressourcen
-und Diagnose. Erfahrungswert aus der Beispielmod: 142 Common-Klassen gegenüber 18–22 Klassen pro Payload —
-also 85–89 % des Codes versionsneutral. (Kapitel 18.1, 19.7, 28.4, 41.2)
+Abstracted and stable, by contrast: lifecycle, logging, config, paths, registration of simple content (items,
+blocks, sounds, item groups), commands, networking payload data, the stable Fabric API events, resources and
+diagnostics. Measured on the example mod: 142 common classes versus 18–22 classes per payload — i.e. 85–89 % of the
+code is version-neutral. (Chapters 18.1, 19.7, 28.4, 41.2)
 
 ---
 
-Weiter mit [Kapitel 45–46 — Reality Check und finale Architekturzusammenfassung](part-14-reality-check.md).
+Continue with [chapters 45–46 — reality check and the final architecture summary](part-14-reality-check.md).

@@ -1,88 +1,87 @@
 # FabricMultiLoader
 
-**Eine Mod-JAR. Viele Minecraft-Versionen. Ein Download für den Spieler.**
+**One mod JAR. Many Minecraft versions. A single download for players.**
 
-FabricMultiLoader ist eine Runtime-Library plus Gradle-Toolchain für Minecraft Fabric, mit der Modentwickler
-**eine einzige universelle JAR** veröffentlichen können, die auf mehreren Minecraft-Versionen läuft — statt pro
-Version eine eigene Datei.
+FabricMultiLoader is a runtime library plus Gradle toolchain for Minecraft Fabric that lets mod developers ship
+**one single universal JAR** which runs on multiple Minecraft versions — instead of one file per version.
 
 ```
 examplemod-2.0.0-universal.jar
-        ├── läuft auf Minecraft 1.20.1  (Java 17)
-        ├── läuft auf Minecraft 1.21 – 1.21.1  (Java 21)
-        ├── läuft auf Minecraft 1.21.4  (Java 21)
-        └── läuft auf Minecraft 26.1+  (Java 25)
+        ├── runs on Minecraft 1.20.1        (Java 17)
+        ├── runs on Minecraft 1.21 – 1.21.1 (Java 21)
+        ├── runs on Minecraft 1.21.4        (Java 21)
+        └── runs on Minecraft 26.1+         (Java 25)
 ```
 
-> **Status: Konzeptphase.** Das vollständige technische Design ist fertig und implementierungsbereit
-> (46 Kapitel, ~8.600 Zeilen). Code existiert noch nicht — die Implementierung folgt dem
-> [Implementierungsplan](docs/design/part-12-implementation-plan.md).
+> **Status: design phase.** The complete technical design is finished and ready to implement
+> (46 chapters, ~8,600 lines). No code exists yet — implementation follows the
+> [implementation plan](docs/design/part-12-implementation-plan.md).
 
 ---
 
-## Das Problem
+## The problem
 
-Eine Mod, die 1.20.1, 1.21.1 und 1.21.4 unterstützt, bedeutet heute: drei Builds, drei Uploads, drei
-Downloadeinträge — und Spieler, die die falsche Datei erwischen. Der naheliegende Ausweg („eine JAR, die zur
-Laufzeit erkennt, wo sie läuft") scheitert an vier harten Eigenschaften von Fabric und der JVM:
+A mod supporting 1.20.1, 1.21.1 and 1.21.4 today means three builds, three uploads, three download entries — and
+players who grab the wrong file. The obvious way out ("one JAR that detects at runtime where it is running")
+fails on four hard properties of Fabric and the JVM:
 
-| Hindernis | Warum es den naiven Ansatz bricht |
+| Obstacle | Why it breaks the naive approach |
 |---|---|
-| **Mixins** | Fabric registriert alle Mixin-Configs, bevor Modcode läuft. Sponge Mixin löst dabei jede Mixin-Klasse und ihre Targets eager per ASM auf — ein 1.20.1-Mixin crasht unter 1.21.4 beim Registrieren, egal welcher Dispatcher später aufwacht. |
-| **Access Widener** | Fabric akzeptiert genau *eine* AW-Datei pro Mod, mappinggebunden. Eine versionsübergreifende Datei ist nicht mappingkorrekt herstellbar. |
-| **Bytecode-Deskriptoren** | `new Identifier(a,b)` → `Identifier.of(a,b)`, `PacketByteBuf` → `RegistryByteBuf`: Bytecode referenziert Methoden über Name **und Deskriptor**. Ein einzelnes Kompilat kann nicht beide auflösen. |
-| **Java-Versionen** | 1.20.1 braucht Java 17, 1.21.x Java 21, 26.1+ Java 25. Drei Classfile-Versionen (61/65/69) in einer Datei — auf der ältesten JVM geöffnet. |
+| **Mixins** | Fabric registers every mixin config before any mod code runs. Sponge Mixin eagerly resolves each mixin class and its targets via ASM — a 1.20.1 mixin crashes on 1.21.4 at registration time, no matter which dispatcher wakes up later. |
+| **Access wideners** | Fabric accepts exactly *one* AW file per mod, bound to mappings. A cross-version file cannot be produced in a mapping-correct way. |
+| **Bytecode descriptors** | `new Identifier(a,b)` → `Identifier.of(a,b)`, `PacketByteBuf` → `RegistryByteBuf`: bytecode references methods by name **and descriptor**. A single compilation cannot resolve both. |
+| **Java versions** | 1.20.1 needs Java 17, 1.21.x needs Java 21, 26.1+ needs Java 25. Three class file versions (61/65/69) in one file — opened on the oldest JVM. |
 
-## Die Lösung
+## The solution
 
-Die Universal-JAR ist **kein exotisches Containerformat mit eigenem ClassLoader**, sondern eine ganz normale
-Fabric-Mod, die per Jar-in-Jar mehrere vollständige Fabric-Mods enthält:
+The universal JAR is **not an exotic container format with a custom ClassLoader**. It is an entirely ordinary
+Fabric mod that contains several complete Fabric mods via Jar-in-Jar:
 
 ```
-examplemod-2.0.0-universal.jar          ← Container-Mod, mod id "examplemod"
-├─ fabric.mod.json                      ← depends.minecraft = Union aller Payload-Ranges
-├─ META-INF/omni-container.json         ← Omni-Manifest (Wahrheitsquelle für Runtime + Tooling)
-├─ com/example/common/**.class          ← plattformneutraler Common-Code, keine MC-Referenzen
+examplemod-2.0.0-universal.jar          ← container mod, mod id "examplemod"
+├─ fabric.mod.json                      ← depends.minecraft = union of all payload ranges
+├─ META-INF/omni-container.json         ← Omni manifest (source of truth for runtime + tooling)
+├─ com/example/common/**.class          ← platform-neutral common code, no MC references
 └─ META-INF/jars/
-   ├─ fabricmultiloader-runtime-1.0.0.jar   ← die Library selbst, eigene Fabric-Mod, Java 8
-   ├─ examplemod-mc1201.jar             ← depends { minecraft "1.20.1",     java ">=17" }
-   ├─ examplemod-mc1211.jar             ← depends { minecraft ">=1.21 <1.21.2", java ">=21" }
+   ├─ fabricmultiloader-runtime-1.0.0.jar   ← the library itself, its own Fabric mod, Java 8
+   ├─ examplemod-mc1201.jar             ← depends { minecraft "1.20.1",           java ">=17" }
+   ├─ examplemod-mc1211.jar             ← depends { minecraft ">=1.21 <1.21.2",   java ">=21" }
    └─ examplemod-mc1214.jar             ← depends { minecraft ">=1.21.4 <1.21.5", java ">=21" }
 ```
 
-**Die Auswahl trifft der Fabric Loader selbst** — sein SAT-Solver, bevor irgendeine Klasse geladen, ein Mixin
-registriert oder ein Access Widener gemergt wird. Nicht ausgewählte Payloads werden **nie extrahiert, nie
-geöffnet, nie dem Classpath hinzugefügt und nie von der JVM verifiziert**.
+**Fabric Loader itself makes the selection** — its SAT solver, before a single class is loaded, a mixin is
+registered or an access widener is merged. Payloads that are not selected are **never extracted, never opened,
+never added to the classpath and never verified by the JVM**.
 
-Damit lösen sich alle vier Hindernisse, ohne dass FabricMultiLoader sie selbst lösen muss:
+That resolves all four obstacles without FabricMultiLoader having to solve them itself:
 
-| Problem | Lösung |
+| Problem | Resolution |
 |---|---|
-| Mixins fremder Versionen | Config steht in der `fabric.mod.json` des Payloads → nicht geladen = nie registriert = nie gelesen |
-| Access Widener | Payload *ist* eine eigene Mod → hat seinen eigenen AW, von Loom korrekt remappt |
-| Classfile-Versionen | Java-21-Payload wird auf Java 17 vom Solver verworfen → kein `UnsupportedClassVersionError` |
-| Refmaps / Mappings | Ein Loom-Build pro Payload, eigenes Refmap, eigene Yarn-Version |
+| Mixins of foreign versions | The config lives in the payload's own `fabric.mod.json` → not loaded = never registered = never read |
+| Access wideners | A payload *is* its own mod → it has its own AW, correctly remapped by Loom |
+| Class file versions | A Java 21 payload is discarded by the solver on Java 17 → no `UnsupportedClassVersionError` |
+| Refmaps / mappings | One Loom build per payload, its own refmap, its own Yarn version |
 
-**Kein eigener ClassLoader. Keine Laufzeit-Bytecode-Transformation. Kein Reflection auf Loader-Interna.**
+**No custom ClassLoader. No runtime bytecode transformation. No reflection into loader internals.**
 
-## Was der Entwickler schreibt
+## What the developer writes
 
 ```java
-// common/ — genau einmal kompiliert, kein Minecraft-Import
+// common/ — compiled exactly once, no Minecraft imports
 @UniversalEntrypoint
 public final class ExampleMod implements UniversalMod {
     @Override public void onInitialize(ModContext ctx) {
         ItemHandle ruby = ctx.registries().item(Id.of("examplemod", "ruby"),
                 ItemSpec.builder().maxCount(64).rarity(Rarity.UNCOMMON).build());
 
-        ctx.events().playerJoin(p -> p.sendMessage("Willkommen!"));
-        ctx.capability(Capabilities.COMPONENTS).ifPresent(c -> /* nur ab 1.20.5 */ …);
+        ctx.events().playerJoin(p -> p.sendMessage("Welcome!"));
+        ctx.capability(Capabilities.COMPONENTS).ifPresent(c -> /* only on 1.20.5+ */ …);
     }
 }
 ```
 
 ```java
-// versions/mc-1.21.4/ — der versionsspezifische Anteil, ~20 Klassen
+// versions/mc-1.21.4/ — the version-specific part, ~20 classes
 public final class Platform1214 extends AbstractPlatform {
     @Override public void onInitialize(ModContext ctx) {
         ctx.services().register(OreGenService.class, new OreGenService1214());
@@ -90,28 +89,28 @@ public final class Platform1214 extends AbstractPlatform {
 }
 ```
 
-Erfahrungswert aus der Referenz-Beispielmod: **142 gemeinsame Klassen gegenüber 18–22 Klassen pro Version** —
-also 85–89 % des Codes versionsneutral, einmal kompiliert und ohne Minecraft in Millisekunden testbar.
+Measured on the reference example mod: **142 shared classes versus 18–22 classes per version** — meaning 85–89 %
+of the code is version-neutral, compiled once, and testable in milliseconds without Minecraft.
 
-## Der Workflow
+## The workflow
 
 ```bash
 git clone https://github.com/CptGummiball/fabricmultiloader-template my-mod
-cd my-mod && ./bootstrap.sh          # Mod-ID, Name, Package setzen
-./gradlew runClient1214              # normaler Loom-Dev-Loop, eine MC-Version
-./gradlew test                       # Common-Logik, ohne Minecraft, ohne Loom
+cd my-mod && ./bootstrap.sh          # set mod id, name, package
+./gradlew runClient1214              # ordinary Loom dev loop, one MC version
+./gradlew test                       # common logic, without Minecraft, without Loom
 ./gradlew buildUniversalJar          # -> build/libs/my-mod-1.0.0-universal.jar
-./gradlew validateUniversalJar       # 34 Prüfregeln, Classfile-Scan, Disjunktheitsbeweis
-./gradlew integrationTest            # dieselbe Datei auf 1.20.1 / 1.21.1 / 1.21.4 gebootet
+./gradlew validateUniversalJar       # 34 rules, class file scan, disjointness proof
+./gradlew integrationTest            # boots the same file on 1.20.1 / 1.21.1 / 1.21.4
 ./gradlew addMinecraftVersion --mc=26.1 --java=25 --copy-from=mc1214
 ```
 
-Eine neue Minecraft-Version kostet: ein TOML-Block, ein Verzeichnis, ein 4-zeiliges `build.gradle.kts` — und
-danach nur noch die tatsächlichen API-Anpassungen.
+Adding a new Minecraft version costs one TOML block, one directory and a four-line `build.gradle.kts` — after
+that, only the actual API adjustments remain.
 
-## Wenn eine Version nicht unterstützt wird
+## When a version is not supported
 
-Kein `NoClassDefFoundError`, kein Mixin-Stacktrace:
+No `NoClassDefFoundError`, no mixin stack trace:
 
 ```
 OMNI-2003  FabricMultiLoader could not start Universal Example Mod
@@ -130,89 +129,89 @@ OMNI-2003  FabricMultiLoader could not start Universal Example Mod
 
 ---
 
-## Dokumentation
+## Documentation
 
-Der Einstieg ist **[DESIGN.md](DESIGN.md)** — Executive Summary, Ziele, Nicht-Ziele, Anforderungen und der
-Navigationsindex über alle Teildokumente.
+Start with **[DESIGN.md](DESIGN.md)** — executive summary, goals, non-goals, requirements and the navigation
+index across all parts.
 
-| Kapitel | Dokument |
+| Chapters | Document |
 |---|---|
-| 1–4 Summary, Ziele, Nicht-Ziele, Anforderungen | [DESIGN.md](DESIGN.md) |
-| 5 Fabric/JVM-Machbarkeitsanalyse | [part-01-feasibility.md](docs/design/part-01-feasibility.md) |
-| 6–9 Architekturvarianten, Entscheidung, Runtime, Bootstrap | [part-02-architecture.md](docs/design/part-02-architecture.md) |
-| 10–12 Containerformat, Metadata-Schema, Version Resolver | [part-03-container-format.md](docs/design/part-03-container-format.md) |
-| 13–15 Classloading, Java-Kompatibilität, Mappings | [part-04-classloading.md](docs/design/part-04-classloading.md) |
-| 16–17 Mixin-Architektur, Access Widener | [part-05-mixins-aw.md](docs/design/part-05-mixins-aw.md) |
-| 18–19, 26–28 Common API, Adapter, Networking, Registries | [part-06-api.md](docs/design/part-06-api.md) |
-| 20–25 Gradle-Plugin, DSL, Struktur, Pipeline, Ressourcen | [part-07-gradle.md](docs/design/part-07-gradle.md) |
-| 29–33 Fehler, Diagnose, Validierung, Tests, CI/CD | [part-08-quality.md](docs/design/part-08-quality.md) |
-| 34–38 Distribution, Beispielmod, Migration, Doku | [part-09-project.md](docs/design/part-09-project.md) |
-| 39–42 Security, Performance, Grenzen, Versionierung | [part-10-nfr.md](docs/design/part-10-nfr.md) |
+| 1–4 Summary, goals, non-goals, requirements | [DESIGN.md](DESIGN.md) |
+| 5 Fabric/JVM feasibility analysis | [part-01-feasibility.md](docs/design/part-01-feasibility.md) |
+| 6–9 Architecture variants, decision, runtime, bootstrap | [part-02-architecture.md](docs/design/part-02-architecture.md) |
+| 10–12 Container format, metadata schema, version resolver | [part-03-container-format.md](docs/design/part-03-container-format.md) |
+| 13–15 Classloading, Java compatibility, mappings | [part-04-classloading.md](docs/design/part-04-classloading.md) |
+| 16–17 Mixin architecture, access wideners | [part-05-mixins-aw.md](docs/design/part-05-mixins-aw.md) |
+| 18–19, 26–28 Common API, adapters, networking, registries | [part-06-api.md](docs/design/part-06-api.md) |
+| 20–25 Gradle plugin, DSL, structure, pipeline, resources | [part-07-gradle.md](docs/design/part-07-gradle.md) |
+| 29–33 Errors, diagnostics, validation, testing, CI/CD | [part-08-quality.md](docs/design/part-08-quality.md) |
+| 34–38 Distribution, example mod, migration, documentation | [part-09-project.md](docs/design/part-09-project.md) |
+| 39–42 Security, performance, limits, versioning | [part-10-nfr.md](docs/design/part-10-nfr.md) |
 | 43 Architecture Decision Records (11 ADRs) | [part-11-adrs.md](docs/design/part-11-adrs.md) |
-| 44 Implementierungsplan (21 Schritte, ~87 PT) | [part-12-implementation-plan.md](docs/design/part-12-implementation-plan.md) |
-| 25 harte technische Fragen, beantwortet | [part-13-hard-questions.md](docs/design/part-13-hard-questions.md) |
-| 45–46 Reality Check, finale Zusammenfassung | [part-14-reality-check.md](docs/design/part-14-reality-check.md) |
+| 44 Implementation plan (21 steps, ~87 person-days) | [part-12-implementation-plan.md](docs/design/part-12-implementation-plan.md) |
+| 25 hard technical questions, answered | [part-13-hard-questions.md](docs/design/part-13-hard-questions.md) |
+| 45–46 Reality check, final summary | [part-14-reality-check.md](docs/design/part-14-reality-check.md) |
 
-## Geplante Module
+## Planned modules
 
-| Modul | Java | Aufgabe |
+| Module | Java | Responsibility |
 |---|---|---|
-| `fabricmultiloader-format` | 8 | Manifest-Modell, JSON-Parser, Versionsalgebra, Resolver, Fehlercodes — geteilt zwischen Runtime und Build |
-| `fabricmultiloader-api` | 8 | Entwickler-SPI: `ModContext`, `Platform`, `Registries`, `Networking`, `Commands`, `Events`, `Services`, `Capabilities` |
-| `fabricmultiloader-runtime` | 8 | Eigene Fabric-Mod: Bootstrap, Lifecycle, Diagnose, versionsstabile Adapter |
-| `fabricmultiloader-processor` | 8 | Annotation Processor für `@UniversalEntrypoint` |
-| `fabricmultiloader-gradle` | 17 | Vier Gradle-Plugins: `settings`, `common`, `version`, `universal` |
-| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR-Fixtures, Loader-Conformance-Harness, Server-Harness |
-| `example` | — | `UniversalExampleMod` für 1.20.1 / 1.21.1 / 1.21.4 |
+| `fabricmultiloader-format` | 8 | Manifest model, JSON parser, version algebra, resolver, error codes — shared between runtime and build |
+| `fabricmultiloader-api` | 8 | Developer SPI: `ModContext`, `Platform`, `Registries`, `Networking`, `Commands`, `Events`, `Services`, `Capabilities` |
+| `fabricmultiloader-runtime` | 8 | Its own Fabric mod: bootstrap, lifecycle, diagnostics, version-stable adapters |
+| `fabricmultiloader-processor` | 8 | Annotation processor for `@UniversalEntrypoint` |
+| `fabricmultiloader-gradle` | 17 | Four Gradle plugins: `settings`, `common`, `version`, `universal` |
+| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR fixtures, loader conformance harness, server harness |
+| `example` | — | `UniversalExampleMod` for 1.20.1 / 1.21.1 / 1.21.4 |
 
 ## Roadmap
 
-| Meilenstein | Inhalt | Aufwand |
+| Milestone | Content | Effort |
 |---|---|---|
-| M0 | Repository-Gerüst, Konventions-Plugins, CI-Skelett | 1 T |
-| M1 | `format`: JSON, Versionsalgebra, Manifest, Resolver | 11 T |
-| M2 | `api`: vollständige Entwickler-SPI | 4 T |
-| M3 | `runtime`: Bootstrap, Context, Lifecycle, Mixin-Plugin | 12 T |
-| **M4** | **`testing` + Loader-Conformance-Gate** | **7 T** |
-| M5 | Gradle-Plugin: Matrix, Pipeline, Assembler, Validator | 30 T |
-| M6 | Beispielmod, drei Versionen, Abnahme | 11 T |
-| M7 | Dokumentation, Template, Release 1.0.0 | 11 T |
+| M0 | Repository scaffold, convention plugins, CI skeleton | 1 d |
+| M1 | `format`: JSON, version algebra, manifest, resolver | 11 d |
+| M2 | `api`: complete developer SPI | 4 d |
+| M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d |
+| **M4** | **`testing` + loader conformance gate** | **7 d** |
+| M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d |
+| M6 | Example mod, three versions, acceptance | 11 d |
+| M7 | Documentation, template, release 1.0.0 | 11 d |
 
-## Die tragende Annahme — offen benannt
+## The load-bearing assumption — stated openly
 
-Die gesamte Architektur ruht auf **einer** nicht formal spezifizierten Fabric-Loader-Eigenschaft:
+The entire architecture rests on **one** property of Fabric Loader that is not formally specified:
 
-> Ein genesteter Mod-Kandidat mit unerfüllbaren `depends`, auf den kein geladener Mod hart angewiesen ist, wird
-> vom `ModSolver` **nicht ausgewählt** — statt einen harten Resolutionsfehler zu erzeugen.
+> A nested mod candidate whose `depends` cannot be satisfied, and which no loaded mod hard-depends on, is
+> **not selected** by `ModSolver` — instead of causing a hard resolution failure.
 
-Das ist das Verhalten der Loader-Reihen 0.14.x–0.17.x und der Grund, warum JiJ-Bibliotheken mit engen
-MC-Bereichen im Ökosystem funktionieren. Weil das Fundament darauf ruht:
+This is the behaviour of loader lines 0.14.x–0.17.x and the reason JiJ libraries with narrow MC ranges work
+throughout the ecosystem. Because the foundation rests on it:
 
-* wird sie in [Kapitel 5](docs/design/part-01-feasibility.md) aus der Loader-Startsequenz hergeleitet,
-* durch einen **nächtlichen Conformance-Test über fünf Loader-Versionen** abgesichert, der bei Fehlschlag
-  automatisch ein Issue öffnet und Releases blockiert,
-* steht das Conformance-Gate im Implementierungsplan **vor** dem 30-Tage-Gradle-Plugin, nicht danach,
-* und es gibt zwei vorbereitete Rückfallpfade ([Kapitel 41](docs/design/part-10-nfr.md)).
+* it is derived from the loader start sequence in [chapter 5](docs/design/part-01-feasibility.md),
+* it is guarded by a **nightly conformance test across five loader versions** that automatically opens an issue
+  on failure and blocks releases,
+* the conformance gate sits **before** the 30-day Gradle plugin work in the implementation plan, not after,
+* and two fallback paths are prepared ([chapter 41](docs/design/part-10-nfr.md)).
 
-Eine zweite Annahme dieser Tragweite existiert im Entwurf nicht.
+There is no second assumption of this weight in the design.
 
 ---
 
-## Lizenz
+## License
 
-**Kein Open Source.** Der Code und die Dokumentation sind öffentlich lesbar, aber urheberrechtlich geschützt:
-Kopieren, Weiterverbreiten, Forken zur Veröffentlichung und Weiterverwendung in anderen Projekten sind ohne
-schriftliche Genehmigung **nicht** erlaubt. Details: [LICENSE](LICENSE).
+**Not open source.** The code and documentation are publicly readable but copyrighted: copying, redistribution,
+forking for publication and reuse in other projects are **not** permitted without written permission. Details:
+[LICENSE](LICENSE).
 
-> **Hinweis zur Zielsetzung:** Diese Lizenz ist eine bewusste Übergangslösung für die Entwicklungsphase. Sie ist
-> mit dem Endzweck des Projekts unvereinbar — die Runtime wird per Jar-in-Jar in *fremde* Mod-JARs eingebettet,
-> und das *ist* Weiterverbreitung. Vor der ersten produktiven Nutzung durch Dritte muss deshalb auf eine
-> permissive Lizenz umgestellt werden (Absicht: Apache-2.0, siehe [LICENSE](LICENSE) Abschnitt 4).
+> **Note on intent:** this license is a deliberate interim measure for the development phase. It is incompatible
+> with the project's end purpose — the runtime is embedded into *third-party* mod JARs via Jar-in-Jar, and that
+> *is* redistribution. Before any productive use by third parties, the project must therefore move to a
+> permissive license (intent: Apache-2.0, see [LICENSE](LICENSE) section 4).
 
-Minecraft ist eine Marke von Mojang Synergies AB. Fabric, Fabric Loader, Fabric API, Yarn und Fabric Loom sind
-Projekte der FabricMC-Organisation. Dieses Projekt steht in keiner Verbindung zu ihnen.
+Minecraft is a trademark of Mojang Synergies AB. Fabric, Fabric Loader, Fabric API, Yarn and Fabric Loom are
+projects of the FabricMC organisation. This project is not affiliated with them.
 
-## Kontakt
+## Contact
 
-Fragen, Feedback, Genehmigungsanfragen: [Issues](https://github.com/CptGummiball/fabricmultiloader/issues) ·
-treeman1992@outlook.de
+Questions, feedback, permission requests:
+[Issues](https://github.com/CptGummiball/fabricmultiloader/issues) · treeman1992@outlook.de
