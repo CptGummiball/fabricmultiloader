@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+#  Build and test tooling only.
+#
+#  NOTHING that depends on a Minecraft version belongs here — that lives in a
+#  mod project's gradle/fabricmultiloader.toml (the matrix). See chapter 24.6.
+# ---------------------------------------------------------------------------
+
+[versions]
+junit = "5.11.4"
+assertj = "3.27.0"
+# Lowest supported Fabric Loader — deliberately compiled against, so that newer
+# loader API cannot be used by accident (chapter 9.3).
+fabricLoader = "0.14.0"
+tomlj = "1.1.1"
+
+[libraries]
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabricLoader" }
+tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
+
+[bundles]
+testing = ["junit-jupiter", "assertj-core"]

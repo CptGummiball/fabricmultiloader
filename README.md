@@ -13,9 +13,13 @@ examplemod-2.0.0-universal.jar
         └── runs on Minecraft 26.1+         (Java 25)
 ```
 
-> **Status: design phase.** The complete technical design is finished and ready to implement
-> (46 chapters, ~8,600 lines). No code exists yet — implementation follows the
-> [implementation plan](docs/design/part-12-implementation-plan.md).
+> **Status: implementation started.** The technical design is complete (46 chapters, ~8,600 lines) and
+> implementation follows the [implementation plan](docs/design/part-12-implementation-plan.md).
+> Done: **M0 — repository scaffold** (step 1 of 21). Next: the `format` module (steps 2–5).
+>
+> Build requires **JDK 21** to run Gradle (8.11.1 does not run on JDK 24+); compilation targets are
+> set per module via `--release`. `./gradlew build` runs 40 unit tests and verifies the bytecode
+> baseline of every module.
 
 ---
 
@@ -166,16 +170,16 @@ index across all parts.
 
 ## Roadmap
 
-| Milestone | Content | Effort |
-|---|---|---|
-| M0 | Repository scaffold, convention plugins, CI skeleton | 1 d |
-| M1 | `format`: JSON, version algebra, manifest, resolver | 11 d |
-| M2 | `api`: complete developer SPI | 4 d |
-| M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d |
-| **M4** | **`testing` + loader conformance gate** | **7 d** |
-| M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d |
-| M6 | Example mod, three versions, acceptance | 11 d |
-| M7 | Documentation, template, release 1.0.0 | 11 d |
+| Milestone | Content | Effort | Status |
+|---|---|---|---|
+| M0 | Repository scaffold, convention plugins, CI skeleton | 1 d | ✅ done |
+| M1 | `format`: JSON, version algebra, manifest, resolver | 11 d | next |
+| M2 | `api`: complete developer SPI | 4 d | |
+| M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d | |
+| **M4** | **`testing` + loader conformance gate** | **7 d** | |
+| M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d | |
+| M6 | Example mod, three versions, acceptance | 11 d | |
+| M7 | Documentation, template, release 1.0.0 | 11 d | |
 
 ## The load-bearing assumption — stated openly
 

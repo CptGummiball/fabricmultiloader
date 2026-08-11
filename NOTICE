@@ -1,0 +1,48 @@
+FabricMultiLoader
+Copyright (c) 2026 CptGummiball
+
+This product is licensed under the FabricMultiLoader Proprietary Source-Available
+License. See the LICENSE file for terms.
+
+
+THIRD-PARTY NAMES
+-----------------
+
+Minecraft is a trademark of Mojang Synergies AB. This project is not affiliated
+with, endorsed by, or sponsored by Mojang Synergies AB or Microsoft.
+
+Fabric, Fabric Loader, Fabric API, Fabric Loom, Yarn and Intermediary mappings
+are projects of the FabricMC organisation (https://fabricmc.net). This project is
+not affiliated with or endorsed by FabricMC. It builds on Fabric Loader's
+documented, public behaviour and does not modify, patch or redistribute it.
+
+Mixin is developed by SpongePowered (https://spongepowered.org).
+
+Gradle is a trademark of Gradle Inc.
+
+All trademarks are the property of their respective owners and are used here for
+identification purposes only.
+
+
+THIRD-PARTY DEPENDENCIES
+------------------------
+
+The published FabricMultiLoader artifacts have the following dependencies:
+
+  fabricmultiloader-format     none
+  fabricmultiloader-api        fabricmultiloader-format
+  fabricmultiloader-runtime    fabricmultiloader-format, fabricmultiloader-api
+                               net.fabricmc:fabric-loader (compile-only, not bundled)
+  fabricmultiloader-processor  fabricmultiloader-format
+  fabricmultiloader-gradle     fabricmultiloader-format, org.tomlj:tomlj (Apache-2.0)
+  fabricmultiloader-testing    fabricmultiloader-format, fabricmultiloader-api
+
+Build- and test-time only, never shipped inside a universal JAR:
+
+  JUnit 5            Eclipse Public License 2.0
+  AssertJ            Apache License 2.0
+  Gradle             Apache License 2.0
+  Fabric Loom        MIT License
+
+The deliberate absence of a JSON library from `fabricmultiloader-format` is an
+architectural decision, not an oversight — see chapter 11.7.
