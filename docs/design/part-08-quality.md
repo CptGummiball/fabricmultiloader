@@ -194,6 +194,7 @@ alias — the loader would only have reported “requires examplemod-impl which 
 
 | Code | Meaning |
 |---|---|
+| 3000 | Malformed JSON document (syntax error, with line, column and a caret) |
 | 3001 | Required field missing (with a JSON pointer) |
 | 3002 | Type error (with a JSON pointer, expected/actual) |
 | 3003 | Input limit exceeded (size/depth/count) |
