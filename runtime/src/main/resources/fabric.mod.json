@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "fabricmultiloader",
+  "version": "${version}",
+  "name": "FabricMultiLoader",
+  "description": "Runtime library for universal Fabric mod jars. Nested into every universal mod and deduplicated by Fabric Loader, so exactly one copy — the newest — runs per game.",
+  "authors": [
+    "CptGummiball"
+  ],
+  "contact": {
+    "homepage": "https://github.com/CptGummiball/fabricmultiloader",
+    "sources": "https://github.com/CptGummiball/fabricmultiloader",
+    "issues": "https://github.com/CptGummiball/fabricmultiloader/issues"
+  },
+  "license": "LicenseRef-FabricMultiLoader-Proprietary",
+  "environment": "*",
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "java": ">=8"
+  },
+  "custom": {
+    "modmenu": {
+      "badges": [
+        "library"
+      ]
+    }
+  }
+}

@@ -7,6 +7,16 @@ description = "The FabricMultiLoader runtime — itself an ordinary Fabric mod "
     "(mod id 'fabricmultiloader') nested into every universal JAR. Bootstrap, " +
     "environment detection, payload activation, lifecycle and diagnostics."
 
+// The runtime ships as a Fabric mod, so its fabric.mod.json carries the real version.
+// Deliberately no `minecraft` dependency: this library must load on every supported version.
+tasks.named<ProcessResources>("processResources") {
+    val moduleVersion = project.version.toString()
+    inputs.property("version", moduleVersion)
+    filesMatching("fabric.mod.json") {
+        expand("version" to moduleVersion)
+    }
+}
+
 dependencies {
     api(project(":format"))
     api(project(":api"))
@@ -18,5 +28,6 @@ dependencies {
 
     testImplementation(libs.bundles.testing)
     testImplementation(libs.fabric.loader)
+    testImplementation(testFixtures(project(":format")))
     testRuntimeOnly(libs.junit.platform.launcher)
 }

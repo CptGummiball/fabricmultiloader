@@ -62,7 +62,11 @@ public final class ManifestFixtures {
                 .modVersion("2.0.0+mc" + minecraft)
                 .displayName("Universal Example Mod (Minecraft " + minecraft + ")")
                 .file(OmniFormat.NESTED_JAR_ROOT + "examplemod-" + id + ".jar")
-                .integrity("9ab200000000000000000000000000000000000000000000000000000000000b", 184320L)
+                // Deliberately no checksum: this fixture exists to model the version matrix, and a
+                // made-up hash would mean every test that merely wants three payloads would first
+                // have to produce three jars whose bytes match it. Integrity has its own tests,
+                // which build a manifest over content they actually write.
+                .integrity("", 0L)
                 .classfileMajor(classfileMajor)
                 .priority(0)
                 .platformFactory("com.example." + id + ".Platform" + id.substring(2) + "Factory")

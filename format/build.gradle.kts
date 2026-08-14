@@ -1,6 +1,10 @@
 plugins {
     id("fabricmultiloader.java8-conventions")
     id("fabricmultiloader.publishing-conventions")
+    // The reference version matrix as a fixture, shared with the runtime's tests. Keeping one copy
+    // means the two cannot drift apart, which for a matrix that encodes real Minecraft versions is
+    // the difference between a test that guards behaviour and one that guards a stale assumption.
+    `java-test-fixtures`
 }
 
 description = "Manifest model, JSON parser, version algebra and payload resolver — " +
