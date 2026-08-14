@@ -12,7 +12,7 @@ import dev.fabricmultiloader.format.hash.Sha256;
 import dev.fabricmultiloader.format.manifest.ContainerManifest;
 import dev.fabricmultiloader.format.manifest.ManifestFixtures;
 import dev.fabricmultiloader.format.manifest.ManifestWriter;
-import dev.fabricmultiloader.runtime.FakeLoader;
+import dev.fabricmultiloader.testing.FakeFabricLoader;
 import dev.fabricmultiloader.runtime.diag.DiagnosticReport;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -41,12 +41,12 @@ class BootstrapTest {
     }
 
     /** A fake loader with the reference container installed and one payload selected. */
-    private FakeLoader loaderWith(String minecraft, int java, String activePayloadModId)
+    private FakeFabricLoader loaderWith(String minecraft, int java, String activePayloadModId)
             throws IOException {
         Path gameDir = Files.createDirectories(tempDir.resolve("game"));
         Path containerRoot = Files.createDirectories(tempDir.resolve("container"));
 
-        FakeLoader loader = new FakeLoader(gameDir)
+        FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                 .withMod("minecraft", minecraft)
                 .withMod("fabricloader", "0.16.9")
                 .withMod("fabric-api", "0.114.0")
@@ -69,7 +69,7 @@ class BootstrapTest {
         @Test
         @DisplayName("the loader's selection is what the runtime activates")
         void activatesTheSelectedPayload() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
 
             ContainerRuntime runtime = RuntimeBootstrap.forTesting(loader)
                     .resolveContainer(CONTAINER);
@@ -95,7 +95,7 @@ class BootstrapTest {
         @Test
         @DisplayName("no selected payload aborts with the full diagnostic")
         void noPayloadAborts() throws IOException {
-            FakeLoader loader = loaderWith("1.22.3", 21, null);
+            FakeFabricLoader loader = loaderWith("1.22.3", 21, null);
 
             OmniException thrown = catchThrowableOfType(OmniException.class,
                     () -> RuntimeBootstrap.forTesting(loader).resolveContainer(CONTAINER));
@@ -110,7 +110,7 @@ class BootstrapTest {
         @Test
         @DisplayName("two selected payloads abort as ambiguous — a validated build cannot do this")
         void twoPayloadsAbort() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214")
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214")
                     .withMod("examplemod-mc1211", "2.0.0");
 
             OmniException thrown = catchThrowableOfType(OmniException.class,
@@ -123,7 +123,7 @@ class BootstrapTest {
         @DisplayName("lenient mode keeps the game running with the mod inactive")
         void lenientModeContinues() throws IOException {
             System.setProperty(ContainerRuntime.STRICT_PROPERTY, "false");
-            FakeLoader loader = loaderWith("1.22.3", 21, null);
+            FakeFabricLoader loader = loaderWith("1.22.3", 21, null);
 
             ContainerRuntime runtime = RuntimeBootstrap.forTesting(loader)
                     .resolveContainer(CONTAINER);
@@ -152,7 +152,7 @@ class BootstrapTest {
         @DisplayName("a missing manifest reports a corrupted jar, not a class error")
         void missingManifest() throws IOException {
             Path gameDir = Files.createDirectories(tempDir.resolve("game"));
-            FakeLoader loader = new FakeLoader(gameDir)
+            FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                     .withMod("minecraft", "1.21.4")
                     .withMod(CONTAINER, "2.0.0", Files.createDirectories(tempDir.resolve("empty")));
 
@@ -166,7 +166,7 @@ class BootstrapTest {
         @Test
         @DisplayName("a manifest belonging to another mod is refused")
         void mismatchedModId() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             Path gameDir = loader.gameDir();
             Path otherRoot = Files.createDirectories(tempDir.resolve("other"));
             loader.withMod("othermod", "1.0.0", otherRoot);
@@ -198,7 +198,7 @@ class BootstrapTest {
                             "mc1214", "1.21.4", ">=1.21.4 <1.21.5", ">=21", 65, "*"))
                     .build();
 
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             loader.withFile(CONTAINER, OmniFormat.CONTAINER_MANIFEST_PATH,
                     ManifestWriter.write(demanding));
 
@@ -211,7 +211,7 @@ class BootstrapTest {
 
         @Test
         void discoveryFindsEveryContainer() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             assertThat(RuntimeBootstrap.forTesting(loader).discoverContainers())
                     .containsExactly(CONTAINER);
         }
@@ -246,7 +246,7 @@ class BootstrapTest {
         @DisplayName("a payload whose bytes do match passes")
         void matchingPayloadPasses() throws IOException {
             byte[] jarBytes = "the real payload jar".getBytes(UTF_8);
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             loader.withFile(CONTAINER, OmniFormat.CONTAINER_MANIFEST_PATH,
                     ManifestWriter.write(manifestFor(jarBytes)));
             loader.withFile(CONTAINER, JAR_PATH, jarBytes);
@@ -259,7 +259,7 @@ class BootstrapTest {
         @DisplayName("a payload whose bytes do not match its checksum stops the launch")
         void tamperedPayloadIsRefused() throws IOException {
             byte[] expected = "the real payload jar".getBytes(UTF_8);
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             loader.withFile(CONTAINER, OmniFormat.CONTAINER_MANIFEST_PATH,
                     ManifestWriter.write(manifestFor(expected)));
             loader.withFile(CONTAINER, JAR_PATH, "not the jar that was built".getBytes(UTF_8));
@@ -277,7 +277,7 @@ class BootstrapTest {
         @DisplayName("a declared payload jar that is missing entirely is refused too")
         void missingPayloadJarIsRefused() throws IOException {
             byte[] expected = "the real payload jar".getBytes(UTF_8);
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             loader.withFile(CONTAINER, OmniFormat.CONTAINER_MANIFEST_PATH,
                     ManifestWriter.write(manifestFor(expected)));
 
@@ -293,7 +293,7 @@ class BootstrapTest {
         void verificationCanBeDisabled() throws IOException {
             System.setProperty(IntegrityChecker.DISABLE_PROPERTY, "false");
             byte[] expected = "the real payload jar".getBytes(UTF_8);
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             loader.withFile(CONTAINER, OmniFormat.CONTAINER_MANIFEST_PATH,
                     ManifestWriter.write(manifestFor(expected)));
             loader.withFile(CONTAINER, JAR_PATH, "recompressed".getBytes(UTF_8));
@@ -305,7 +305,7 @@ class BootstrapTest {
         @Test
         @DisplayName("a payload without checksum data is not verified — the fixture case")
         void absentChecksumSkipsVerification() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
 
             assertThat(RuntimeBootstrap.forTesting(loader).resolveContainer(CONTAINER).isActive())
                     .isTrue();
@@ -319,7 +319,7 @@ class BootstrapTest {
         @Test
         @DisplayName("a successful launch records what ran, for the next support question")
         void writesLastLaunch() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214");
             RuntimeBootstrap.forTesting(loader).resolveContainer(CONTAINER);
 
             Path record = loader.gameDir()
@@ -338,7 +338,7 @@ class BootstrapTest {
         @DisplayName("a failed launch writes the long report next to the short message")
         void writesFailureReport() throws IOException {
             System.setProperty(ContainerRuntime.STRICT_PROPERTY, "false");
-            FakeLoader loader = loaderWith("1.22.3", 21, null);
+            FakeFabricLoader loader = loaderWith("1.22.3", 21, null);
             RuntimeBootstrap.forTesting(loader).resolveContainer(CONTAINER);
 
             Path report = loader.gameDir()
@@ -361,7 +361,7 @@ class BootstrapTest {
             Path gameDir = tempDir.resolve("not-a-directory");
             Files.write(gameDir, "blocking file".getBytes(UTF_8));
 
-            FakeLoader loader = new FakeLoader(gameDir)
+            FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                     .withMod("minecraft", "1.21.4")
                     .withMod("fabricmultiloader", "1.0.0")
                     .withMod("examplemod-mc1214", "2.0.0")
@@ -381,7 +381,7 @@ class BootstrapTest {
 
         @Test
         void readsEverythingFromLoaderMetadata() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214").inDevelopment();
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214").inDevelopment();
 
             dev.fabricmultiloader.format.payload.Environment environment =
                     RuntimeBootstrap.forTesting(loader).environment();
@@ -397,7 +397,7 @@ class BootstrapTest {
         @Test
         @DisplayName("without Minecraft there is nothing to resolve against, and it says so")
         void refusesOutsideAGame() throws IOException {
-            FakeLoader loader = new FakeLoader(Files.createDirectories(tempDir.resolve("g")))
+            FakeFabricLoader loader = new FakeFabricLoader(Files.createDirectories(tempDir.resolve("g")))
                     .withMod("fabricloader", "0.16.9");
 
             assertThatThrownBy(() -> RuntimeBootstrap.forTesting(loader))
@@ -409,7 +409,7 @@ class BootstrapTest {
         @Test
         @DisplayName("a development runtime reports the named namespace, not what the manifest said")
         void developmentRuntimeUsesNamedMappings() throws IOException {
-            FakeLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214").inDevelopment();
+            FakeFabricLoader loader = loaderWith("1.21.4", 21, "examplemod-mc1214").inDevelopment();
 
             ContainerRuntime runtime = RuntimeBootstrap.forTesting(loader)
                     .resolveContainer(CONTAINER);

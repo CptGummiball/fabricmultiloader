@@ -3,7 +3,7 @@ package dev.fabricmultiloader.runtime.mixin;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.fabricmultiloader.format.Side;
-import dev.fabricmultiloader.runtime.FakeLoader;
+import dev.fabricmultiloader.testing.FakeFabricLoader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,11 +31,11 @@ class ConditionalMixinPluginTest {
     }
 
     /** A payload carrying one mixin config with an {@code omni} block. */
-    private FakeLoader loaderWith(String omniBlock) throws IOException {
+    private FakeFabricLoader loaderWith(String omniBlock) throws IOException {
         Path gameDir = Files.createDirectories(tempDir.resolve("game"));
         Path payloadRoot = Files.createDirectories(tempDir.resolve("payload"));
 
-        FakeLoader loader = new FakeLoader(gameDir)
+        FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                 .withMod("minecraft", "1.21.4")
                 .withMod("fabricloader", "0.16.9")
                 .withMod(PAYLOAD, "2.0.0", payloadRoot)
@@ -69,7 +69,7 @@ class ConditionalMixinPluginTest {
             + "    \"defaultDecision\": \"apply\"\n"
             + "  }";
 
-    private static ConditionalMixinPlugin loaded(FakeLoader loader) {
+    private static ConditionalMixinPlugin loaded(FakeFabricLoader loader) {
         ConditionalMixinPlugin plugin = new ConditionalMixinPlugin(loader);
         plugin.onLoad(PACKAGE);
         return plugin;
@@ -91,7 +91,7 @@ class ConditionalMixinPluginTest {
         @Test
         @DisplayName("a mixin whose required mod is present is applied")
         void appliesWhenTheModIsPresent() throws IOException {
-            FakeLoader loader = loaderWith(CONDITIONS)
+            FakeFabricLoader loader = loaderWith(CONDITIONS)
                     .withMod("cloth-config", "15.0.140")
                     .withMod("jei", "19.0.0");
 
@@ -104,7 +104,7 @@ class ConditionalMixinPluginTest {
         @Test
         @DisplayName("a required mod present in the wrong version is skipped")
         void respectsTheVersionRange() throws IOException {
-            FakeLoader loader = loaderWith(CONDITIONS).withMod("cloth-config", "14.0.0");
+            FakeFabricLoader loader = loaderWith(CONDITIONS).withMod("cloth-config", "14.0.0");
 
             assertThat(loaded(loader).shouldApplyMixin("net.minecraft.Screen", CLOTH_MIXIN))
                     .isFalse();
@@ -163,7 +163,7 @@ class ConditionalMixinPluginTest {
         @Test
         @DisplayName("malformed JSON applies everything rather than aborting the launch")
         void survivesMalformedJson() throws IOException {
-            FakeLoader loader = loaderWith(CONDITIONS);
+            FakeFabricLoader loader = loaderWith(CONDITIONS);
             loader.withFile(PAYLOAD, CONFIG, "{ this is not json");
 
             ConditionalMixinPlugin plugin = loaded(loader);
@@ -225,7 +225,7 @@ class ConditionalMixinPluginTest {
         @Test
         @DisplayName("a foreign mod with unreadable metadata does not break the search")
         void toleratesAForeignModWithBrokenMetadata() throws IOException {
-            FakeLoader loader = loaderWith(CONDITIONS);
+            FakeFabricLoader loader = loaderWith(CONDITIONS);
             Path otherRoot = Files.createDirectories(tempDir.resolve("othermod"));
             loader.withMod("othermod", "1.0.0", otherRoot);
             loader.withFile("othermod", "fabric.mod.json", "{ broken");

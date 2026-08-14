@@ -1,4 +1,4 @@
-package dev.fabricmultiloader.runtime;
+package dev.fabricmultiloader.testing;
 
 import dev.fabricmultiloader.format.Side;
 import dev.fabricmultiloader.runtime.loader.LoaderFacade;
@@ -21,10 +21,11 @@ import java.util.Optional;
  * and the parts hardest to exercise inside a real launch, which is the entire reason the facade
  * exists.
  *
- * <p>Moves into the {@code testing} module in implementation step 10, where mod projects can use it
- * too.
+ * <p>Published as part of {@code fabricmultiloader-testing} so mod projects can use it too: a test
+ * that needs "Minecraft 1.20.1 with Fabric API 0.92.2 and this one payload selected" builds it here
+ * in three lines, and runs in milliseconds.
  */
-public final class FakeLoader implements LoaderFacade {
+public final class FakeFabricLoader implements LoaderFacade {
 
     private static final Charset UTF_8 = Charset.forName("UTF-8");
 
@@ -39,12 +40,12 @@ public final class FakeLoader implements LoaderFacade {
     /**
      * @param gameDir a temporary directory standing in for the game directory
      */
-    public FakeLoader(Path gameDir) {
+    public FakeFabricLoader(Path gameDir) {
         this.gameDir = gameDir;
     }
 
     /** Registers a loaded mod with no files. */
-    public FakeLoader withMod(String modId, String version) {
+    public FakeFabricLoader withMod(String modId, String version) {
         modVersions.put(modId, version);
         return this;
     }
@@ -55,14 +56,14 @@ public final class FakeLoader implements LoaderFacade {
      * <p>A directory rather than a real zip on purpose: in a development runtime Fabric hands back
      * exactly that, so this is a shape the production code must handle anyway.
      */
-    public FakeLoader withMod(String modId, String version, Path root) {
+    public FakeFabricLoader withMod(String modId, String version, Path root) {
         modVersions.put(modId, version);
         modRoots.put(modId, root);
         return this;
     }
 
     /** Adds a file to a registered mod. */
-    public FakeLoader withFile(String modId, String pathInJar, String content) {
+    public FakeFabricLoader withFile(String modId, String pathInJar, String content) {
         Path root = modRoots.get(modId);
         if (root == null) {
             throw new IllegalStateException("register mod '" + modId + "' with a root first");
@@ -78,7 +79,7 @@ public final class FakeLoader implements LoaderFacade {
     }
 
     /** Adds a binary file to a registered mod. */
-    public FakeLoader withFile(String modId, String pathInJar, byte[] content) {
+    public FakeFabricLoader withFile(String modId, String pathInJar, byte[] content) {
         Path root = modRoots.get(modId);
         if (root == null) {
             throw new IllegalStateException("register mod '" + modId + "' with a root first");
@@ -94,19 +95,19 @@ public final class FakeLoader implements LoaderFacade {
     }
 
     /** Sets the physical side. */
-    public FakeLoader onSide(Side value) {
+    public FakeFabricLoader onSide(Side value) {
         this.side = value;
         return this;
     }
 
     /** Marks this as a development runtime. */
-    public FakeLoader inDevelopment() {
+    public FakeFabricLoader inDevelopment() {
         this.development = true;
         return this;
     }
 
     /** Removes a mod, simulating one the solver did not select. */
-    public FakeLoader withoutMod(String modId) {
+    public FakeFabricLoader withoutMod(String modId) {
         modVersions.remove(modId);
         return this;
     }

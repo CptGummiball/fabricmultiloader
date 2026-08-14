@@ -9,7 +9,7 @@ import dev.fabricmultiloader.format.Side;
 import dev.fabricmultiloader.format.error.ErrorCode;
 import dev.fabricmultiloader.format.error.OmniException;
 import dev.fabricmultiloader.format.manifest.ManifestWriter;
-import dev.fabricmultiloader.runtime.FakeLoader;
+import dev.fabricmultiloader.testing.FakeFabricLoader;
 import dev.fabricmultiloader.runtime.fixture.LifecycleFixture;
 import dev.fabricmultiloader.runtime.fixture.Recorder;
 import java.io.IOException;
@@ -83,11 +83,11 @@ class DevFallbackTest {
     }
 
     /** A loader with only the payload installed — the shape of a Loom {@code runServer}. */
-    private FakeLoader standaloneLoader(String descriptor) throws IOException {
+    private FakeFabricLoader standaloneLoader(String descriptor) throws IOException {
         Path gameDir = Files.createDirectories(tempDir.resolve("game"));
         Path payloadRoot = Files.createDirectories(tempDir.resolve("payload"));
 
-        FakeLoader loader = new FakeLoader(gameDir)
+        FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                 .withMod("minecraft", "1.21.4")
                 .withMod("fabricloader", "0.16.9")
                 .withMod("fabric-api", "0.114.0")
@@ -101,7 +101,7 @@ class DevFallbackTest {
     @Test
     @DisplayName("a standalone payload in development runs the whole lifecycle")
     void runsStandaloneInDevelopment() throws IOException {
-        FakeLoader loader = standaloneLoader(
+        FakeFabricLoader loader = standaloneLoader(
                 payloadJson("mc1214", "com.example.mc1214.Platform1214Factory", 65))
                 .inDevelopment();
 
@@ -132,7 +132,7 @@ class DevFallbackTest {
     @Test
     @DisplayName("outside development a payload without its container is refused")
     void refusesStandaloneInProduction() throws IOException {
-        FakeLoader loader = standaloneLoader(
+        FakeFabricLoader loader = standaloneLoader(
                 payloadJson("mc1214", "com.example.mc1214.Platform1214Factory", 65));
 
         OmniException thrown = catchThrowableOfType(OmniException.class,
@@ -150,7 +150,7 @@ class DevFallbackTest {
     @DisplayName("the slim property enables the same path outside development")
     void allowsStandaloneWithTheSlimProperty() throws IOException {
         System.setProperty(DevFallback.SLIM_PROPERTY, "true");
-        FakeLoader loader = standaloneLoader(
+        FakeFabricLoader loader = standaloneLoader(
                 payloadJson("mc1214", "com.example.mc1214.Platform1214Factory", 65));
 
         List<ContainerRuntime> resolved = RuntimeBootstrap.forTesting(loader).resolveAll();
@@ -162,7 +162,7 @@ class DevFallbackTest {
     @Test
     @DisplayName("the synthetic manifest disables integrity checking, having nothing to check")
     void disablesIntegrityChecking() throws IOException {
-        FakeLoader loader = standaloneLoader(
+        FakeFabricLoader loader = standaloneLoader(
                 payloadJson("mc1214", "com.example.mc1214.Platform1214Factory", 65))
                 .inDevelopment();
 
@@ -177,7 +177,7 @@ class DevFallbackTest {
     @DisplayName("with the container present the descriptor is only cross-checked")
     void crossChecksAgainstThePresentContainer() throws IOException {
         LifecycleFixture fixture = new LifecycleFixture();
-        FakeLoader loader = fixture.loader(tempDir);
+        FakeFabricLoader loader = fixture.loader(tempDir);
         Path payloadRoot = Files.createDirectories(tempDir.resolve("payload"));
         loader.withMod(PAYLOAD, "2.0.0+mc1.21.4", payloadRoot);
         loader.withFile(PAYLOAD, OmniFormat.PAYLOAD_DESCRIPTOR_PATH,
@@ -194,7 +194,7 @@ class DevFallbackTest {
     @DisplayName("a descriptor disagreeing with the container reports OMNI-2011")
     void reportsDivergence() throws IOException {
         LifecycleFixture fixture = new LifecycleFixture();
-        FakeLoader loader = fixture.loader(tempDir);
+        FakeFabricLoader loader = fixture.loader(tempDir);
         Path payloadRoot = Files.createDirectories(tempDir.resolve("payload"));
         loader.withMod(PAYLOAD, "2.0.0+mc1.21.4", payloadRoot);
         // Java 21 bytecode according to the container, Java 17 according to the payload itself.
@@ -215,7 +215,7 @@ class DevFallbackTest {
     @DisplayName("a container carrying no payload descriptor still resolves normally")
     void toleratesAMissingDescriptor() throws IOException {
         LifecycleFixture fixture = new LifecycleFixture();
-        FakeLoader loader = fixture.loader(tempDir);
+        FakeFabricLoader loader = fixture.loader(tempDir);
 
         List<ContainerRuntime> resolved = RuntimeBootstrap.forTesting(loader).resolveAll();
 

@@ -13,10 +13,10 @@ examplemod-2.0.0-universal.jar
         └── runs on Minecraft 26.1+         (Java 25)
 ```
 
-> **Status: 9 of 21 implementation steps done.** The technical design is complete (46 chapters, ~8,600 lines)
+> **Status: 10 of 21 implementation steps done.** The technical design is complete (46 chapters, ~8,600 lines)
 > and implementation follows the [implementation plan](docs/design/part-12-implementation-plan.md).
-> Complete: **M0** scaffold, **M1** `format`, **M2** `api`, **M3** `runtime`. Next: **M4** — the test harness
-> and the [loader conformance gate](#the-load-bearing-assumption--stated-openly).
+> Complete: **M0** scaffold, **M1** `format`, **M2** `api`, **M3** `runtime`, and the test harness of **M4**.
+> Next: the [loader conformance gate](#the-load-bearing-assumption--stated-openly), step 11.
 >
 > What runs today: a container manifest is read, exactly one payload is resolved against the live
 > environment, its platform is instantiated, and the full lifecycle executes through to `RUNNING` —
@@ -24,7 +24,7 @@ examplemod-2.0.0-universal.jar
 > *produces* a universal JAR (M5); until then the format is exercised from tests rather than from a build.
 >
 > Build requires **JDK 21** to run Gradle (8.11.1 does not run on JDK 24+); compilation targets are
-> set per module via `--release`. `./gradlew build` runs **579 unit tests** and verifies the bytecode
+> set per module via `--release`. `./gradlew build` runs **602 unit tests** and verifies the bytecode
 > baseline of every module.
 
 ---
@@ -173,7 +173,7 @@ index across all parts.
 | `fabricmultiloader-runtime` | 8 | Its own Fabric mod: bootstrap, lifecycle, diagnostics, version-stable adapters | 131 |
 | `fabricmultiloader-processor` | 8 | Annotation processor for `@UniversalEntrypoint` | 3 |
 | `fabricmultiloader-gradle` | 17 | Four Gradle plugins: `settings`, `common`, `version`, `universal` — *scaffold only, M5* | 3 |
-| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR fixtures, loader conformance harness, server harness — *scaffold only, M4* | 9 |
+| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR fixtures, loader conformance harness, server harness | 32 |
 | `example` | — | `UniversalExampleMod` for 1.20.1 / 1.21.1 / 1.21.4 — *M6* | — |
 
 ## Roadmap
@@ -184,7 +184,7 @@ index across all parts.
 | M1 | `format`: JSON, version algebra, manifest, resolver | 11 d | ✅ done |
 | M2 | `api`: complete developer SPI | 4 d | ✅ done |
 | M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d | ✅ done |
-| **M4** | **`testing` + loader conformance gate** | **7 d** | **next** |
+| **M4** | **`testing` + loader conformance gate** | **7 d** | **harness done, gate next** |
 | M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d | |
 | M6 | Example mod, three versions, acceptance | 11 d | |
 | M7 | Documentation, template, release 1.0.0 | 11 d | |

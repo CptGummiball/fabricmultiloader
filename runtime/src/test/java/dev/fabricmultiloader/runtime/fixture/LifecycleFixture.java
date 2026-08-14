@@ -10,7 +10,7 @@ import dev.fabricmultiloader.format.manifest.ManifestWriter;
 import dev.fabricmultiloader.format.manifest.MappingsInfo;
 import dev.fabricmultiloader.format.manifest.PayloadDescriptor;
 import dev.fabricmultiloader.format.manifest.Requirements;
-import dev.fabricmultiloader.runtime.FakeLoader;
+import dev.fabricmultiloader.testing.FakeFabricLoader;
 import dev.fabricmultiloader.runtime.boot.ContainerRuntime;
 import dev.fabricmultiloader.runtime.boot.RuntimeBootstrap;
 import java.io.IOException;
@@ -119,11 +119,11 @@ public final class LifecycleFixture {
     }
 
     /** The loader this fixture installs the container into. */
-    public FakeLoader loader(Path tempDir) throws IOException {
+    public FakeFabricLoader loader(Path tempDir) throws IOException {
         Path gameDir = Files.createDirectories(tempDir.resolve("game"));
         Path containerRoot = Files.createDirectories(tempDir.resolve("container"));
 
-        FakeLoader loader = new FakeLoader(gameDir)
+        FakeFabricLoader loader = new FakeFabricLoader(gameDir)
                 .withMod("minecraft", "1.21.4")
                 .withMod("fabricloader", "0.16.9")
                 .withMod("fabric-api", "0.114.0")

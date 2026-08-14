@@ -1,6 +1,23 @@
+import org.gradle.api.attributes.java.TargetJvmVersion
+
 plugins {
     id("fabricmultiloader.java8-conventions")
     id("fabricmultiloader.publishing-conventions")
+}
+
+// The Java 8 baseline is about the bytecode that ships inside every universal jar, not about the
+// tests. Those run on the build's own JDK and consume :testing, which is Java 17 — so the test
+// source set is compiled and resolved at 17 while compileJava stays at 8. verifyBytecodeBaseline
+// scans compileJava's output only, so the guarantee that matters is untouched.
+tasks.named<JavaCompile>("compileTestJava") {
+    options.release.set(17)
+}
+listOf("testCompileClasspath", "testRuntimeClasspath").forEach { name ->
+    configurations.named(name) {
+        attributes {
+            attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 17)
+        }
+    }
 }
 
 description = "The FabricMultiLoader runtime — itself an ordinary Fabric mod " +
@@ -36,5 +53,9 @@ dependencies {
     testImplementation(libs.fabric.loader)
     testImplementation(libs.sponge.mixin)
     testImplementation(testFixtures(project(":format")))
+    // The published harness, used by the runtime's own tests. Not circular: :testing depends on
+    // this module's main output, and this line is on the test compile classpath. Eating the same
+    // food as mod authors keeps FakeFabricLoader honest — a gap in it shows up here first.
+    testImplementation(project(":testing"))
     testRuntimeOnly(libs.junit.platform.launcher)
 }

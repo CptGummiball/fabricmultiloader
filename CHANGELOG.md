@@ -134,6 +134,28 @@ framework modules, with the container format and manifest schema versioned indep
     loader in every Fabric environment because the loader itself depends on it, so exactly one class
     may reference it and nothing is shipped.
 
+* **Implementation step 10 — the test harness.** (`testing`, `format`)
+  * `FakeModContext` — a `ModContext` with no Minecraft behind it that records every item, block,
+    sound, item group, channel and sent payload the mod declares, in declaration order. Commands and
+    events are deliberately *not* faked: they delegate to the real `CommandRegistry` and `EventBus`
+    from step 9, so a mod author's test exercises the actual side filtering, permission
+    accumulation, conflict detection and dispatch ordering rather than a lookalike that could
+    disagree with them. `fireServerStarted`, `firePlayerJoin` and `deliver` then drive the mod's own
+    handlers.
+  * `RecordedRegistrations`, `FakeHandles` (handles that admit they are unbound, and fail `unwrap`
+    with a sentence), `FakeComponents` (in-memory data components, keyed by stack identity),
+    `FakePlatform`, `ManifestBuilder`, `JarWriter`, `PayloadJarBuilder`, `ContainerJarBuilder`,
+    `JarFixtures`, `GoldenFiles`.
+  * `format.manifest.FabricModJsonWriter` and `PayloadManifestWriter` — the derivation of the
+    loader's view from the Omni manifest. In `format` rather than in the Gradle plugin because three
+    consumers need exactly one of it: the plugin that produces real jars, the conformance harness
+    that produces synthetic ones, and the validator that reads them back. The jar fixtures therefore
+    carry generated metadata rather than hand-written metadata, which is the only way a conformance
+    test proves anything about what the build actually emits.
+  * `FakeLoader` moved out of the runtime's tests and became `FakeFabricLoader` in `testing`, as
+    step 7 said it would. The runtime's own tests now consume the published harness, so a gap in it
+    shows up here before it shows up in a mod project.
+
 ### Changed
 
 * `Registries` gained a `default flush()`. The lifecycle requires deferred registrations to run
@@ -200,12 +222,16 @@ Recorded here because each was found by implementing the design, not by re-readi
   the property that actually matters at this stage.
 * The `gradle-plugin` module is plain Java for now; `java-gradle-plugin` and Kotlin arrive with
   the first real plugin implementation in step 12.
-* Test count after step 9: **579** across `format` (397), `runtime` (131), `api` (36), `testing` (9),
+* Test count after step 10: **602** across `format` (397), `runtime` (131), `api` (36), `testing` (32),
   `processor` (3) and `gradle-plugin` (3). The distribution is deliberate — the version algebra, the
   resolver and the disjointness proof are where a defect would be silent, so that is where the tests
   are.
+* The `runtime` module's **test** source set compiles at Java 17 while its main source set stays at
+  Java 8. The baseline is about the bytecode that ships inside every universal jar; the tests run on
+  the build's own JDK and consume `testing`, which is Java 17. `verifyBytecodeBaseline` scans
+  `compileJava`'s output only, so the guarantee that matters is unchanged.
 * No release has been cut. Nothing here has a version number yet; `[Unreleased]` covers implementation
-  steps 1–9 and will be split into a real release entry when 1.0.0 ships (step 21).
+  steps 1–10 and will be split into a real release entry when 1.0.0 ships (step 21).
 
 ## [0.0.0] — design phase
 
