@@ -26,8 +26,15 @@ dependencies {
     // an old loader in the wild.
     compileOnly(libs.fabric.loader)
 
+    // Mixin is on the system class loader in every Fabric environment (chapter 13.2), so the
+    // conditional mixin plugin can implement IMixinConfigPlugin without the runtime ever shipping
+    // or depending on Mixin at run time. Exactly one class references it, and only that class is
+    // loaded — by Mixin itself, when a payload's config names it as its plugin.
+    compileOnly(libs.sponge.mixin)
+
     testImplementation(libs.bundles.testing)
     testImplementation(libs.fabric.loader)
+    testImplementation(libs.sponge.mixin)
     testImplementation(testFixtures(project(":format")))
     testRuntimeOnly(libs.junit.platform.launcher)
 }

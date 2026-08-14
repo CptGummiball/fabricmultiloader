@@ -13,6 +13,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,22 @@ class ForbiddenReferencesTest {
     private static final List<String> MAY_NAME_CLASSLOADER = Arrays.asList(
             "PlatformLoader.class", "CommonBootstrap.class");
 
+    /**
+     * The single class that may reference Mixin.
+     *
+     * <p>{@code ConditionalMixinPlugin} implements {@code IMixinConfigPlugin}, so it cannot avoid
+     * naming the interface. That is safe for a reason specific to Mixin: it lives on the system
+     * class loader in every Fabric environment (chapter 13.2), because the loader itself depends on
+     * it — so the reference always resolves, on every supported version, and the runtime ships no
+     * copy of it. And the class is only ever loaded when a payload's mixin config names it as its
+     * plugin, which is opt-in per payload.
+     *
+     * <p>The rule stays otherwise absolute. Payload mixins are the loader's business, and a second
+     * class reaching for Mixin would mean the runtime had started doing bytecode work of its own.
+     */
+    private static final List<String> MAY_NAME_MIXIN =
+            Collections.singletonList("ConditionalMixinPlugin.class");
+
     private static Map<String, String> forbidden() {
         Map<String, String> map = new LinkedHashMap<String, String>();
         map.put("java/net/URLClassLoader",
@@ -66,7 +83,8 @@ class ForbiddenReferencesTest {
         map.put("net/fabricmc/loader/impl/",
                 "loader internals change between versions; only net.fabricmc.loader.api is stable");
         map.put("org/spongepowered/asm/",
-                "the runtime must not depend on Mixin — payload mixins are the loader's business");
+                "only the conditional mixin plugin may reference Mixin — payload mixins are "
+                        + "otherwise the loader's business");
         map.put("net/minecraft/",
                 "the runtime loads on every supported version and must name no Minecraft type (I3)");
         map.put("com/mojang/",
@@ -174,6 +192,9 @@ class ForbiddenReferencesTest {
         String name = classFile.getFileName().toString();
         if ("java/lang/ClassLoader".equals(reference)) {
             return MAY_NAME_CLASSLOADER.contains(name);
+        }
+        if ("org/spongepowered/asm/".equals(reference)) {
+            return MAY_NAME_MIXIN.contains(name);
         }
         if (!"FabricLoaderFacade.class".equals(name)
                 && !"ContainerPreLaunch.class".equals(name)

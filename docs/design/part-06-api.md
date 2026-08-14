@@ -384,8 +384,8 @@ import dev.fabricmultiloader.api.net.Networking;
 import dev.fabricmultiloader.api.platform.AbstractPlatform;
 import dev.fabricmultiloader.api.platform.CrashContext;
 import dev.fabricmultiloader.api.registry.Registries;
-import dev.fabricmultiloader.runtime.adapter.CommandsImpl;      // provided by the runtime
-import dev.fabricmultiloader.runtime.adapter.EventsImpl;
+import dev.fabricmultiloader.runtime.adapter.CommandRegistry;   // provided by the runtime
+import dev.fabricmultiloader.runtime.adapter.EventBus;
 
 import java.util.Optional;
 
@@ -393,15 +393,17 @@ public final class Platform1214 extends AbstractPlatform {
 
     private final Registries1214 registries;
     private final Networking1214 networking;
-    private final CommandsImpl   commands;
-    private final EventsImpl     events;
+    private final CommandRegistry commands;
+    private final EventBus        events;
 
     Platform1214(ModContext ctx) {
         super(ctx);
         this.registries = new Registries1214(ctx);
         this.networking = new Networking1214(ctx);
-        this.commands   = new CommandsImpl(ctx);
-        this.events     = new EventsImpl(ctx);
+        this.commands   = new CommandRegistry(ctx.modId(), ctx.side(), ctx.log());
+        this.events     = new EventBus(ctx.modId(), ctx.log());
+        new CommandsAdapter1214(ctx, commands).install();   // the Brigadier half, ~30 lines
+        new EventsAdapter1214(ctx, events).install();       // the Fabric API half, ~30 lines
     }
 
     @Override public Registries registries() { return registries; }
@@ -444,9 +446,12 @@ public final class Platform1214Factory implements PlatformFactory {
 }
 ```
 
-The adapter is therefore ~40 lines of glue code. `CommandsImpl` and `EventsImpl` are provided by the runtime,
-because commands and Fabric API events are stable enough across 1.20.1–26.1 to allow **one** implementation
-(chapter 28.4) — but they remain overridable should a version diverge.
+The adapter is therefore ~100 lines of glue code, of which about 60 are the Brigadier and Fabric API wiring.
+`CommandRegistry` and `EventBus` are provided by the runtime and hold everything that does not name a Minecraft
+type — collection, side filtering, permission accumulation, subscription management, dispatch ordering and
+failure containment — because that part is stable across 1.20.1–26.1 and only needs **one** implementation
+(chapter 28.4). The two adapter classes named above are what a payload writes; both remain fully replaceable should
+a version diverge.
 
 ## 19.3 The lifecycle in detail
 
@@ -1210,18 +1215,55 @@ final class ExampleCommands {
 }
 ```
 
-The adapter (`CommandsImpl` in the runtime, shared across versions) translates `CommandSpec` into Brigadier:
+The translation into Brigadier is split at the Minecraft boundary. The runtime cannot implement
+`CommandRegistrationCallback` itself — its functional method names `ServerCommandSource` and `RegistrationEnvironment`,
+and a class that is never remapped cannot resolve a Minecraft type in both the development and the production
+namespace (the full argument is in the step 9 note of the implementation plan). So the runtime owns everything up to
+that call and the payload makes it:
 
 ```java
 package dev.fabricmultiloader.runtime.adapter;
 
-public final class CommandsImpl implements Commands {
-    // Uses only CommandRegistrationCallback + Brigadier — both stable from
-    // 1.19 to 26.1. The single divergence (ServerCommandSource#sendFeedback takes
-    // a Supplier from 1.20 onwards) is handled by a small per-payload
-    // FeedbackAdapter that the runtime obtains from Platform#capability.
+/** Shared across versions: collection, side filtering, permission accumulation, flattening. */
+public final class CommandRegistry implements Commands {
+    public void register(CommandSpec spec);
+    public List<Node> nodes();          // one entry per executable branch, with its full path,
+                                        // its accumulated arguments and its effective permission
+    public void seal();
+
+    public static final class Node {
+        public String path();                       // "ruby give"
+        public List<String> segments();             // ["ruby", "give"]
+        public Map<String, Arg<?>> arguments();     // parents first, in declaration order
+        public int permissionLevel();               // highest declared along the path
+        public Function<CommandInvocation, Integer> body();
+    }
 }
+
+/** Supplied per invocation by the payload — the one signature that genuinely diverged. */
+public interface Feedback {
+    void reply(Text text);
+    void broadcast(Text text);
+    void fail(Text text);
+}
+
+/** Built by the runtime from the payload's parsed arguments plus its Feedback. */
+public final class CommandInvocationImpl implements CommandInvocation { … }
 ```
+
+The payload's side is a loop:
+
+```java
+// versions/mc-1.21.4/src/main/java/com/example/mc1214/CommandsAdapter1214.java
+CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
+    for (CommandRegistry.Node node : commands.nodes()) {
+        dispatcher.register(build(node));   // literals, argument types, requires(node.permissionLevel())
+    }
+});
+```
+
+`ServerCommandSource#sendFeedback` takes a `Text` up to 1.19 and a `Supplier<Text>` from 1.20; that difference lives
+entirely in the payload's three-line `Feedback` implementation.
 
 This also demonstrates that the runtime **may** contain version-spanning adapters — wherever the underlying API is
 genuinely stable. The validator documents that through `payload.capabilities`: a payload that does not declare

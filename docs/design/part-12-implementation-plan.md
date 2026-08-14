@@ -115,15 +115,37 @@ test coverage (target: 95 % of lines).
 
 | | |
 |---|---|
-| **Classes** | `runtime.adapter`: `CommandsImpl` (Brigadier via `CommandRegistrationCallback`), `EventsImpl` (the stable Fabric API events), `TextConverter`, `FeedbackAdapter` (capability-based)<br>`runtime.mixin`: `ConditionalMixinPlugin`, `ConfigLocator`, `PluginLog`, `Condition` |
-| **Tests** | `ConditionalMixinPluginTest` (the condition matrix, fail-open, debug output), `MixinPluginIsolationTest` (a bytecode test: the plugin references only the JDK/`format`/`FabricLoader` API ⇒ `OMNI-1035`), `CommandSpecTranslationTest` (against a Brigadier fake), `EventsImplTest` (against Fabric API fakes) |
-| **DoD** | `CommandsImpl`/`EventsImpl` compile against Fabric API 0.92.2 (1.20.1) **and** 0.114.0 (1.21.4) — verified by two additional `compileOnly` source sets in the `runtime` module; the mixin plugin's isolation verified at the bytecode level |
+| **Classes** | `runtime.adapter`: `CommandRegistry` (collection, side filtering, permission accumulation, flattening), `CommandInvocationImpl`, `EventBus` (subscriptions, dispatch, failure containment), `TextConverter`, `Feedback`<br>`runtime.mixin`: `ConditionalMixinPlugin`, `ConfigLocator`, `PluginLog`, `Condition` |
+| **Tests** | `ConditionalMixinPluginTest` (the condition matrix, fail-open, config location), `MixinPluginIsolationTest` (a bytecode test: the mixin package references only the JDK/`format`/the loader facade/Mixin ⇒ `OMNI-1035`), `CommandRegistryTest`, `EventBusTest`, `TextConverterTest` |
+| **DoD** | The runtime compiles against **no** Fabric API at all, verified for every class in the module by `ForbiddenReferencesTest`; the mixin plugin's isolation verified at the bytecode level |
 | **Depends on** | step 8 |
 | **Effort** | 4 days |
 
-> Architectural note: `runtime` declares Fabric API exclusively as `compileOnly` and in **two** variants (the oldest
-> and the newest matrix target), to make sure the “version-stable” adapters really are stable. If either compilation
-> fails, the functionality does not belong in the runtime but in the payloads.
+> **Correction to chapter 28.2, found during implementation.** The plan called for a `CommandsImpl` in the runtime
+> registering Brigadier commands through Fabric API's `CommandRegistrationCallback`, verified by compiling the
+> module against Fabric API 0.92.2 and 0.114.0. That is not buildable. `CommandRegistrationCallback`'s functional
+> method is `register(CommandDispatcher<ServerCommandSource>, CommandRegistryAccess, RegistrationEnvironment)`; two
+> of the three parameters are Minecraft types and therefore appear in the descriptor of any class implementing it.
+> The runtime is not a Loom build, is never remapped, and is loaded unchanged on every supported version, so such a
+> reference would resolve in at most one namespace — `net.minecraft.…` in development or `net.minecraft.class_…` in
+> production, never both. Remapping the runtime instead would bind it to one Minecraft version, which is exactly
+> what invariant I3 and validator rule `OMNI-1042` forbid.
+>
+> The adapter is therefore split at the **Minecraft boundary** rather than at the subsystem boundary. Command
+> collection, side filtering, permission accumulation, path-conflict detection, argument folding, subscription
+> management, dispatch ordering, per-handler failure containment and the text tree walk all stay in the runtime —
+> one implementation for every version, which is what chapter 28.4 actually claims. What moves into the payload is
+> the wiring: a `CommandRegistrationCallback` listener that walks `CommandRegistry#nodes()`, and Fabric API event
+> listeners that call `EventBus#fire…`. That is under forty lines per payload.
+>
+> The two-Fabric-API DoD is replaced by a stronger check that already existed: the runtime references no Fabric API,
+> no Minecraft and no Mojang class at all, enforced on the bytecode of every class in the module.
+>
+> Two smaller deviations. `FeedbackAdapter` is called `Feedback` and is a plain interface the payload supplies per
+> invocation, rather than a capability — a capability is a feature gate, and every payload has to be able to send
+> command output. And `ConditionalMixinPlugin` reaches the loader through `LoaderFacade` instead of calling
+> `FabricLoader.getInstance()` as sketched in 16.6, which keeps the loader API countable in one file and is what
+> makes the plugin testable against a fake loader at all.
 
 ---
 

@@ -595,7 +595,8 @@ fabricmultiloader/
 │   │   ├── env/                  EnvironmentDetector, Environment
 │   │   ├── payload/              PlatformLoader, PayloadActivation
 │   │   ├── context/              ModContextImpl, ServiceRegistryImpl, CapabilityResolver
-│   │   ├── adapter/              CommandsImpl, EventsImpl, TextConverter (version-stable parts)
+│   │   ├── adapter/              CommandRegistry, EventBus, TextConverter, Feedback
+│   │   │                         (the halves that name no Minecraft type)
 │   │   ├── diag/                 DiagnosticReport, ReportWriter, DebugDump, CrashContextImpl
 │   │   ├── mixin/                ConditionalMixinPlugin, ConfigLocator, PluginLog
 │   │   └── log/                  Log, Slf4jBridge, Formatter

@@ -244,7 +244,7 @@ import dev.fabricmultiloader.format.json.Json;
 import dev.fabricmultiloader.format.json.JsonObject;
 import dev.fabricmultiloader.format.version.SemVer;
 import dev.fabricmultiloader.format.version.VersionRange;
-import net.fabricmc.loader.api.FabricLoader;
+import dev.fabricmultiloader.runtime.loader.LoaderFacade;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -267,25 +267,33 @@ import java.util.Set;
  */
 public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
 
+    private final LoaderFacade loader;      // package-private constructor takes a fake in tests
     private final Map<String, Condition> conditions = new HashMap<String, Condition>();
     private boolean defaultApply = true;
     private String configName = "<unknown>";
 
     @Override
     public void onLoad(String mixinPackage) {
-        // The config name is not available via getRefMapperConfig(); Mixin passes only
-        // the package to onLoad. We derive the config file from the package by scanning
-        // all mixin configs on the classpath that declare this package.
-        for (String candidate : ConfigLocator.configsForPackage(mixinPackage)) {
-            configName = candidate;
+        // Mixin passes only the package to onLoad, never the config file the conditions
+        // live in. Scanning the classpath for a config would be wrong with several
+        // universal mods installed - the first hit is not necessarily ours. So the search
+        // goes the other way round: ask the loader which mods are present, read each one's
+        // declared mixin configs, and keep those whose "package" matches. Mod-scoped and
+        // exact, and it needs nothing beyond the loader facade and the JSON parser.
+        for (ConfigLocator.Located candidate
+                : ConfigLocator.configsForPackage(loader, mixinPackage)) {
+            configName = candidate.config();
             parse(candidate);
         }
     }
 
-    private void parse(String resource) {
-        try (InputStream in = ConditionalMixinPlugin.class.getClassLoader().getResourceAsStream(resource)) {
+    private void parse(ConfigLocator.Located located) {
+        // findPath, never getResourceAsStream: the read is mod-scoped, so with several
+        // universal mods installed there is no question which config was found.
+        try (InputStream in = Files.newInputStream(
+                loader.findPath(located.modId(), located.config()).orElse(null))) {
             if (in == null) return;
-            JsonObject root = Json.parse(readAll(in)).asObject();
+            JsonObject root = Json.parse(in, JsonLimits.DEFAULT).asObject();
             JsonObject omni = root.optObject("omni");
             if (omni == null) return;
             defaultApply = !"skip".equals(omni.optString("defaultDecision", "apply"));
@@ -306,7 +314,7 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
         String simple = mixinClassName.substring(mixinClassName.lastIndexOf('.') + 1);
         Condition c = conditions.get(simple);
         if (c == null) return defaultApply;
-        boolean apply = c.evaluate();
+        boolean apply = c.evaluate(loader);
         PluginLog.debug("OMNI-2201 " + configName + ": " + simple
                 + (apply ? " applied" : " skipped (" + c.describe() + ")"));
         return apply;
@@ -320,23 +328,23 @@ public final class ConditionalMixinPlugin implements IMixinConfigPlugin {
 
     /** requireMod + optional version, requireProperty, requireEnv. */
     static final class Condition {
-        String requireMod; VersionRange version; String requireProperty; String requireEnv;
+        String requireMod; VersionRange version; String requireProperty; Side requireEnv;
 
-        boolean evaluate() {
-            FabricLoader loader = FabricLoader.getInstance();
+        boolean evaluate(LoaderFacade loader) {
+            // Through the facade, not FabricLoader.getInstance(): it keeps the loader API
+            // countable in one file (the claim ForbiddenReferencesTest checks) and is what
+            // makes the plugin testable against a fake loader at all.
             if (requireMod != null) {
                 if (!loader.isModLoaded(requireMod)) return false;
                 if (version != null) {
-                    SemVer v = SemVer.parseLenient(loader.getModContainer(requireMod).get()
-                            .getMetadata().getVersion().getFriendlyString());
-                    if (!version.test(v)) return false;
+                    Optional<String> installed = loader.modVersion(requireMod);
+                    if (!installed.isPresent()
+                            || !version.test(SemVer.parseLenient(installed.get()))) return false;
                 }
             }
             if (requireProperty != null && !Boolean.parseBoolean(System.getProperty(requireProperty, "false")))
                 return false;
-            if (requireEnv != null && !requireEnv.equalsIgnoreCase(loader.getEnvironmentType().name()))
-                return false;
-            return true;
+            return requireEnv == null || requireEnv == loader.side();
         }
         String describe() { … }
         static Condition parse(JsonObject o) { … }

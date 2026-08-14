@@ -336,7 +336,7 @@ public final class FabricMultiLoader {
 Additionally, one ObjectShare entry per container, `"<modId>:omni"`, holding a `ContainerHandle`, so foreign mods and
 tools can access the runtime without a compile dependency (reflectively or via `instanceof`).
 
-The debug command `/fmlu` is registered by the runtime through `CommandsImpl`, but only when
+The debug command `/fmlu` is registered by the runtime through `CommandRegistry`, but only when
 `-Dfabricmultiloader.debug=true` is set — in normal operation it does not exist, so no command names are occupied.
 `/fmlu list`, `/fmlu info <modid>`, `/fmlu report <modid>`.
 
