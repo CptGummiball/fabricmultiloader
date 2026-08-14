@@ -37,6 +37,7 @@ public enum ErrorCode {
     OMNI_1013(Severity.INFO, "gap in Minecraft version coverage"),
     OMNI_1014(Severity.ERROR, "container depends.java is not the minimum of the payloads"),
     OMNI_1015(Severity.ERROR, "payload entirely shadowed by higher-priority payloads"),
+    OMNI_1016(Severity.ERROR, "effective payload domain is not expressible as one constraint set"),
     OMNI_1021(Severity.ERROR, "hand-written fabric.mod.json in module resources"),
     OMNI_1022(Severity.ERROR, "payload contains a container manifest"),
     OMNI_1023(Severity.ERROR, "container contains assets/ or data/ entries"),

@@ -16,7 +16,8 @@
 
 | Package | Content |
 |---|---|
-| `dev.fabricmultiloader.api` | Entrypoint interfaces, `ModContext`, `Id`, `Side`, `ModLogger`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader` (static access) |
+| `dev.fabricmultiloader.api` | Entrypoint interfaces, `ModContext`, `Id`, `ModLogger`, `Capability`, `Capabilities`, `ServiceRegistry`, `FabricMultiLoader` (static access) |
+| `dev.fabricmultiloader.format` | `Side` — the physical side. Lives in `format`, not `api`, because the payload matcher needs it and the matcher is shared between runtime and validator. Mod authors see it through `ModContext#side()`; it is visible transitively, since `api` depends on `format` as an `api` dependency. Two identically named enums in two packages of one project is a reliable source of wrong imports, and the "single source in format" rule already governs exactly this case. |
 | `dev.fabricmultiloader.api.platform` | `Platform`, `PlatformFactory`, `PlatformInfo`, `PreLaunchContext`, `CrashContext` |
 | `dev.fabricmultiloader.api.registry` | `Registries`, `ItemSpec`, `BlockSpec`, `SoundSpec`, `ItemGroupSpec`, `*Handle`, `Rarity`, `ToolTier` |
 | `dev.fabricmultiloader.api.net` | `Networking`, `ChannelSpec`, `PayloadCodec`, `ByteSink`, `ByteSource`, `ChannelHandle`, `C2SReceiver`, `S2CReceiver` |

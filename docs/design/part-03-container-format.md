@@ -647,11 +647,19 @@ for each p in P:
     write effective(p) into the payload's generated depends
 ```
 
-The set difference is computed component-wise over a **domain decomposition**: `domain` is a finite union of cells
-`(mcInterval, javaInterval, envSet)`. Subtracting one cell from another yields at most 3 (mc) × 3 (java) × 3 (env)
-= 27 remainder cells, which are then minimised again via `Interval` merging. The result is emitted as an OR array
-of Fabric predicates. The implementation is exact, terminating and covered by 30 test cases (including “mc1214
-beats mcModern”, “client-only beats universal”, “Java 21 variant beats Java 17 variant”).
+The set difference is computed over a **domain decomposition**: `domain` is a finite union of cells
+`(mcInterval, javaInterval, envSet)`. Subtracting one cell from another decomposes **one axis at a time** —
+Minecraft first, then Java within the shared Minecraft range, then the side within both — which yields **at most
+three** non-overlapping remainder cells. (An earlier sketch split all three axes independently, giving up to 27
+cells; the ordered decomposition is equally exact, simpler, and produces reports a human can read.) The result is
+emitted as an OR array of Fabric predicates. The implementation is exact, terminating, and covered by test cases
+including “mc1214 beats mcModern”, “client-only beats universal”, “Java 21 variant beats Java 17 variant” and a
+three-level priority chain.
+
+A subtraction can in principle leave a remainder that needs *different* Java ranges or sides for different
+Minecraft ranges. A Fabric `depends` block cannot express that, and widening it would silently destroy
+disjointness — so the build rejects the configuration with `OMNI-1016` instead, naming the payload and telling
+the developer to split it.
 
 Example output for the scenario above:
 

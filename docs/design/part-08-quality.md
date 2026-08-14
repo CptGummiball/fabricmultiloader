@@ -113,6 +113,7 @@ alias — the loader would only have reported “requires examplemod-impl which 
 | 1013 | Gap in Minecraft version coverage (info) |
 | 1014 | Container `depends.java` ≠ minimum of the payloads |
 | 1015 | Payload entirely shadowed by higher-priority payloads |
+| 1016 | Effective payload domain is not expressible as one constraint set (needs different Java ranges or sides per Minecraft range) |
 | 1021 | Hand-written `fabric.mod.json` in module resources |
 | 1022 | Payload contains `META-INF/omni-container.json` |
 | 1023 | Container contains `assets/` or `data/` |
