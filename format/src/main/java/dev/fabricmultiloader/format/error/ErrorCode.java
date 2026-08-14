@@ -123,6 +123,7 @@ public enum ErrorCode {
     OMNI_2030(Severity.ERROR, "common entrypoint class not found"),
     OMNI_2031(Severity.ERROR, "common entrypoint threw an exception"),
     OMNI_2032(Severity.ERROR, "entrypoint outside the declared common packages"),
+    OMNI_2033(Severity.ERROR, "entrypoint does not implement its phase interface"),
     OMNI_2040(Severity.ERROR, "payload lifecycle hook threw an exception"),
     OMNI_2050(Severity.WARNING, "runtime classes loaded from an unexpected source"),
     OMNI_2100(Severity.INFO, "standalone payload without a container"),

@@ -32,17 +32,16 @@ public final class ContainerPreLaunch implements PreLaunchEntrypoint {
     @Override
     public void onPreLaunch() {
         RuntimeBootstrap bootstrap = RuntimeBootstrap.get();
-        List<String> containers = bootstrap.discoverContainers();
+        List<ContainerRuntime> containers = bootstrap.resolveAll();
         if (containers.isEmpty()) {
             bootstrap.log().warn("no universal mod carries a container manifest, although this "
                     + "entrypoint was invoked — the jar that declared it may be incomplete");
             return;
         }
-        for (String containerModId : containers) {
-            ContainerRuntime runtime = bootstrap.resolveContainer(containerModId);
+        for (ContainerRuntime runtime : containers) {
             if (runtime.isActive()) {
                 bootstrap.log().debug("{} resolved to payload {}",
-                        containerModId, runtime.activePayload().id());
+                        runtime.modId(), runtime.activePayload().id());
             }
         }
     }

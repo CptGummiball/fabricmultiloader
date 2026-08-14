@@ -412,7 +412,8 @@ public final class Platform1214 extends AbstractPlatform {
     @Override
     public void onInitialize(ModContext ctx) {
         ctx.services().register(OreGenService.class, new OreGenService1214());
-        registries.flush();        // performs deferred registrations, see 19.4
+        // No flush() here: the runtime calls Registries#flush after the mod's own onInitialize,
+        // which is the first moment everything the mod declares has been declared (19.4).
     }
 
     @Override
@@ -489,6 +490,12 @@ public interface Registries {
     SoundHandle     sound(Id id);
     ItemGroupHandle itemGroup(Id id, ItemGroupSpec spec);
     void addToItemGroup(Id groupId, ItemHandle... items);
+
+    /**
+     * Performs the deferred registrations. Called by the runtime after the mod's onInitialize;
+     * mod code never calls it. Default-empty, so an adapter registering eagerly ignores it.
+     */
+    default void flush() { }
 }
 ```
 

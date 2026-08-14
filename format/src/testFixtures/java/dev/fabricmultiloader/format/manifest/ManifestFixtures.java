@@ -17,6 +17,9 @@ public final class ManifestFixtures {
                         "fabricmultiloader-gradle", "1.0.0", "1980-01-01T00:00:00Z", "21.0.7"))
                 .container(exampleContainer())
                 .entrypoints(EntrypointSet.builder()
+                        // One class in two phases is how a small mod is really written, and it is
+                        // the case that catches a runtime constructing a fresh instance per phase.
+                        .add(EntrypointSet.Phase.PRE_LAUNCH, "com.example.common.ExampleMod")
                         .add(EntrypointSet.Phase.COMMON, "com.example.common.ExampleMod")
                         .add(EntrypointSet.Phase.CLIENT, "com.example.common.ExampleModClient")
                         .build())

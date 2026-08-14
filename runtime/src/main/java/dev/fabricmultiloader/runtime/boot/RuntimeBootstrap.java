@@ -130,6 +130,89 @@ public final class RuntimeBootstrap {
     }
 
     /**
+     * Resolves every universal mod in the process — container-carried and standalone alike.
+     *
+     * <p>The entry point every framework entrypoint uses, because none of them can find out which
+     * mod declared it: the loader API deliberately does not expose entrypoint metadata. Acting on
+     * all of them instead is not a workaround but the better answer — each resolution is idempotent,
+     * so whichever entrypoint runs first does the work and the rest are no-ops, and the result does
+     * not depend on the order Fabric happened to choose.
+     *
+     * @return every resolved container, ordered by mod id
+     */
+    public java.util.List<ContainerRuntime> resolveAll() {
+        java.util.List<ContainerRuntime> resolved = new java.util.ArrayList<ContainerRuntime>();
+        for (String containerModId : discoverContainers()) {
+            resolved.add(resolveContainer(containerModId));
+        }
+
+        for (java.util.Map.Entry<String, dev.fabricmultiloader.format.manifest.PayloadManifest> entry
+                : DevFallback.discover(loader).entrySet()) {
+            dev.fabricmultiloader.format.manifest.PayloadManifest descriptor = entry.getValue();
+            String containerModId = descriptor.container().modId();
+            ContainerRuntime container = registry.get(containerModId);
+            if (container != null) {
+                // The container is present and already resolved. The descriptor is then read only
+                // to confirm the two agree — they are generated from one source, so a divergence
+                // means the jar was assembled from two builds.
+                DevFallback.crossCheck(descriptor, container.manifest());
+                continue;
+            }
+            if (loader.isModLoaded(containerModId)) {
+                // Loaded but carrying no manifest: already reported as OMNI-2001 above.
+                continue;
+            }
+            resolved.add(resolveStandalone(descriptor));
+        }
+
+        java.util.Collections.sort(resolved, new java.util.Comparator<ContainerRuntime>() {
+            @Override
+            public int compare(ContainerRuntime left, ContainerRuntime right) {
+                return left.modId().compareTo(right.modId());
+            }
+        });
+        return resolved;
+    }
+
+    /**
+     * Registers a payload running without its container, from {@code omni/payload.json}.
+     *
+     * @param descriptor the payload's self-description
+     * @return the container runtime built around it
+     * @throws OmniException {@code OMNI-2003} outside a development or slim runtime
+     */
+    private ContainerRuntime resolveStandalone(
+            dev.fabricmultiloader.format.manifest.PayloadManifest descriptor) {
+        String containerModId = descriptor.container().modId();
+        ContainerRuntime existing = registry.get(containerModId);
+        if (existing != null) {
+            return existing;
+        }
+        ContainerManifest synthetic = DevFallback.synthesise(
+                descriptor, runtimeVersion(), environment, log);
+        ContainerRuntime runtime = registry.register(
+                new ContainerRuntime(synthetic, environment, loader));
+        if (runtime.resolution() == null) {
+            runtime.resolve();
+        }
+        return runtime;
+    }
+
+    /**
+     * The version of the runtime actually executing.
+     *
+     * <p>Read from the loader rather than from a constant, because the runtime is deduplicated
+     * across every installed universal mod and the one running may not be the one any particular
+     * mod shipped.
+     */
+    public dev.fabricmultiloader.format.version.SemVer runtimeVersion() {
+        Optional<String> installed = loader.modVersion(RuntimeInfo.MOD_ID);
+        return installed.isPresent()
+                ? dev.fabricmultiloader.format.version.SemVer.parseLenient(installed.get())
+                : dev.fabricmultiloader.format.version.SemVer.of(1, 0, 0);
+    }
+
+    /**
      * Every loaded mod that carries a container manifest.
      *
      * <p>Used for diagnostics and by tooling; the normal path resolves a specific container from its

@@ -43,6 +43,7 @@ public final class ContainerRuntime {
     private ResolutionReport resolution;
     private PayloadDescriptor active;
     private dev.fabricmultiloader.api.platform.PlatformInfo platformInfo;
+    private dev.fabricmultiloader.runtime.payload.PayloadActivation activation;
 
     /**
      * @param manifest the container manifest
@@ -104,6 +105,23 @@ public final class ContainerRuntime {
     }
 
     /**
+     * The lifecycle driver for the active payload, created on first access.
+     *
+     * <p>Created lazily rather than during {@link #resolve()} because resolution answers "which
+     * implementation is this?" and must stay side-effect-free enough to run in a diagnostic. The
+     * activation is the first thing that loads mod-supplied classes.
+     *
+     * @return the activation
+     * @throws IllegalStateException if no payload is active
+     */
+    public synchronized dev.fabricmultiloader.runtime.payload.PayloadActivation activation() {
+        if (activation == null) {
+            activation = new dev.fabricmultiloader.runtime.payload.PayloadActivation(this, loader);
+        }
+        return activation;
+    }
+
+    /**
      * Resolves, verifies and reports.
      *
      * @return {@code true} if exactly one payload is active
@@ -122,7 +140,9 @@ public final class ContainerRuntime {
         if (selectedByLoader.size() == 1) {
             PayloadDescriptor payload = selectedByLoader.get(0);
             warnIfConstraintsDisagree(payload);
-            new IntegrityChecker(loader).verify(modId(), payload);
+            if (manifest.container().verifyIntegrity()) {
+                new IntegrityChecker(loader).verify(modId(), payload);
+            }
             active = payload;
             platformInfo = new dev.fabricmultiloader.runtime.context.PlatformInfoImpl(
                     environment, payload);

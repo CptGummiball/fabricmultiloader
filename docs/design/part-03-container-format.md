@@ -449,8 +449,11 @@ Key points:
   "schemaVersion": 1,
   "payloadId": "mc1214",
   "modId": "examplemod-mc1214",
+  "modVersion": "2.0.0+mc1.21.4",
   "platformFactory": "com.example.mc1214.Platform1214Factory",
   "classfileMajor": 65,
+  "packages": ["com.example.mc1214"],
+  "provides": ["examplemod-impl"],
   "mappings": { "namespace": "intermediary", "provider": "yarn", "build": "1.21.4+build.8" },
   "container": {
     "modId": "examplemod",
@@ -477,6 +480,19 @@ Key points:
 
 Purpose: (a) the dev fallback without a container (9.7), (b) slim-JAR generation, (c) self-description for
 debugging, (d) a runtime cross-check against the container manifest (`OMNI-2011` on divergence).
+
+Field notes:
+
+* `packages` is **mandatory**. Without a container the payload's own declaration is the only thing bounding which
+  class `platformFactory` may name, and that check (`OMNI-2024`) is what stops an edited descriptor from
+  instantiating an arbitrary class. A descriptor that omits it is rejected.
+* `modVersion`, `displayName`, `provides` and `resourcesDigest` are optional; `modVersion` and `displayName` fall
+  back to the container's.
+* Deliberately absent are `file`, `sha256`, `size` and `priority` — all four are facts only a container knows.
+  The reader fills `file` with the canonical `META-INF/jars/<modId>.jar` for diagnostics, leaves the hash empty and
+  therefore skips the integrity check, which has nothing to verify when the payload *is* the mod on disk.
+* The synthetic container manifest built from this file sets `verifyIntegrity: false` and derives
+  `baselineJavaMajor` from `classfileMajor`.
 
 ---
 

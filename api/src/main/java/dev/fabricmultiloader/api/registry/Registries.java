@@ -73,4 +73,19 @@ public interface Registries {
      * @param items the items to add, in order
      */
     void addToItemGroup(Id groupId, ItemHandle... items);
+
+    /**
+     * Performs the deferred registrations.
+     *
+     * <p>Called by the runtime once, immediately after the mod's {@code onInitialize} has returned —
+     * the first moment at which everything the mod declares has actually been declared. Mod code
+     * never calls this; an adapter that registers eagerly does not implement it either, which is
+     * why it has an empty default rather than being abstract.
+     *
+     * <p>Deferring is nonetheless the recommended shape for an adapter, because the correct moment
+     * to touch a Minecraft registry differs across the supported versions and this is the one place
+     * that difference has to be expressed.
+     */
+    default void flush() {
+    }
 }

@@ -95,11 +95,21 @@ test coverage (target: 95 % of lines).
 
 | | |
 |---|---|
-| **Classes** | `runtime.payload`: `PlatformLoader`, `PayloadActivation`<br>`runtime.context`: `ModContextImpl`, `ServiceRegistryImpl`, `CapabilityResolver`, `ModLoggerImpl`, `PreLaunchContextImpl`, `CrashContextImpl`<br>`runtime.entrypoint`: `PayloadPreLaunch`, `PayloadMain`, `PayloadClient`, `PayloadServer`<br>`runtime.boot`: `CommonBootstrap` (instantiates the mod code's entrypoint classes), `DevFallback` |
-| **Tests** | `PlatformLoaderTest` (missing class, wrong type, `null`, a throwing factory ⇒ `OMNI-2020…2023`; an FQCN outside the payload packages ⇒ `OMNI-2024`), `CommonBootstrapTest`, `ModContextImplTest`, `ServiceRegistryImplTest` (registration only in the permitted phase), `CapabilityResolverTest`, `DevFallbackTest`, `EntrypointOrderTest` (container before payload, idempotent on double invocation) |
+| **Classes** | `format.manifest`: `PayloadManifest`, `PayloadManifestReader` (`omni/payload.json`, needed by the dev fallback)<br>`runtime.payload`: `PlatformLoader`, `PayloadActivation`<br>`runtime.context`: `ModContextImpl`, `ServiceRegistryImpl`, `CapabilityResolver`, `PreLaunchContextImpl`<br>`runtime.diag`: `CrashContextImpl`<br>`runtime.entrypoint`: `PayloadPreLaunch`, `PayloadMain`, `PayloadClient`, `PayloadServer`, `PayloadEntrypoints` (their shared body)<br>`runtime.boot`: `CommonBootstrap` (instantiates the mod code's entrypoint classes), `DevFallback` |
+| **Tests** | `PlatformLoaderTest` (missing class, wrong type, `null`, a throwing factory ⇒ `OMNI-2020…2023`; an FQCN outside the payload packages ⇒ `OMNI-2024`), `PayloadActivationTest` (ordering, idempotence, entrypoint failures `OMNI-2030…2033`, `OMNI-2040`), `ModContextImplTest`, `ServiceRegistryImplTest` (registration only in the permitted window), `CapabilityResolverTest`, `DevFallbackTest` |
 | **DoD** | The full lifecycle runs through with a fake platform; all 4xxx failure paths tested |
 | **Depends on** | step 7 |
 | **Effort** | 4 days |
+
+> Two deviations recorded during implementation. `ModLoggerImpl` does not exist as a separate class: `runtime.log.Log`
+> from step 7 already *is* the `ModLogger` implementation, and a second class delegating to it would be pure
+> indirection. `CrashContextImpl` lives in `runtime.diag` rather than `runtime.context`, matching the module tree in
+> chapter 22.1 — collecting crash report lines is a diagnostics concern.
+>
+> One API addition: `Registries#flush()` as a `default` method. The lifecycle requires the deferred registrations to
+> run *after* the mod's `onInitialize`, and the runtime cannot enforce that ordering through an interface that has no
+> method for it. A `default` (rather than abstract) method keeps the addition compatible with P6 and costs an adapter
+> that registers eagerly nothing.
 
 ### Step 9 — version-stable adapters and the mixin plugin
 

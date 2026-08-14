@@ -38,12 +38,31 @@ class ForbiddenReferencesTest {
     /** Internal names that must not appear anywhere in the runtime's bytecode, and why. */
     private static final Map<String, String> FORBIDDEN = forbidden();
 
+    /**
+     * The two classes that may name {@code java.lang.ClassLoader}, and only to pass the right one
+     * to {@code Class.forName}.
+     *
+     * <p>Both instantiate a class named in the manifest, and both must do so through <em>this</em>
+     * class's loader — {@code KnotClassLoader}, which defines the payload and container classes.
+     * Naming the type is unavoidable for that, and the alternatives are all worse: the one-argument
+     * {@code Class.forName} would depend on the caller's loader, and the thread context loader is a
+     * well-known way to end up with the same type defined twice.
+     *
+     * <p>The exemption stays narrow because the dangerous operations are checked separately and
+     * without exceptions — {@link #FORBIDDEN_METHODS} covers defining and installing a loader, and
+     * {@link #noRuntimeClassIsAClassLoader()} covers subclassing one by inspecting the actual class
+     * hierarchy rather than a byte pattern.
+     */
+    private static final List<String> MAY_NAME_CLASSLOADER = Arrays.asList(
+            "PlatformLoader.class", "CommonBootstrap.class");
+
     private static Map<String, String> forbidden() {
         Map<String, String> map = new LinkedHashMap<String, String>();
         map.put("java/net/URLClassLoader",
                 "a custom ClassLoader bypasses Knot's transformer chain (invariant I1, ADR-002)");
         map.put("java/lang/ClassLoader",
-                "the runtime must never construct or subclass a ClassLoader (invariant I1)");
+                "only the two manifest-driven Class.forName call sites may name a ClassLoader "
+                        + "(invariant I1)");
         map.put("net/fabricmc/loader/impl/",
                 "loader internals change between versions; only net.fabricmc.loader.api is stable");
         map.put("org/spongepowered/asm/",
@@ -106,11 +125,43 @@ class ForbiddenReferencesTest {
             }
         }
 
-        // Two: the facade, and the pre-launch entrypoint, which has to implement Fabric's interface
-        // in order to be an entrypoint at all. Anything beyond that means the abstraction has leaked
-        // and the "twelve stable methods" claim can no longer be checked by reading one file.
+        // Three: the facade, plus the two pre-launch entrypoints, which have to implement Fabric's
+        // PreLaunchEntrypoint in order to be entrypoints at all — that interface exists only in the
+        // loader API, unlike ModInitializer and its siblings, which live in net.fabricmc.api.
+        // Anything beyond these means the abstraction has leaked and the "twelve stable methods"
+        // claim can no longer be checked by reading one file.
         assertThat(touching).containsExactlyInAnyOrder(
-                "FabricLoaderFacade.class", "ContainerPreLaunch.class");
+                "FabricLoaderFacade.class", "ContainerPreLaunch.class", "PayloadPreLaunch.class");
+    }
+
+    /**
+     * The half of invariant I1 a byte scan cannot see.
+     *
+     * <p>A class extending {@code ClassLoader} carries the name in its constant pool like any other
+     * reference, so the string rule above cannot distinguish "extends it" from "passes one to
+     * {@code Class.forName}". This asks the JVM instead. Classes are resolved with
+     * {@code initialize = false}, so no static initialiser runs — the point is the hierarchy, not
+     * the behaviour.
+     */
+    @Test
+    @DisplayName("no runtime class is itself a ClassLoader")
+    void noRuntimeClassIsAClassLoader() throws Exception {
+        Path root = runtimeClassesRoot();
+        List<String> violations = new ArrayList<String>();
+
+        for (Path classFile : runtimeClassFiles()) {
+            String className = root.relativize(classFile).toString()
+                    .replace('\\', '.').replace('/', '.');
+            className = className.substring(0, className.length() - ".class".length());
+
+            Class<?> type = Class.forName(className, false,
+                    ForbiddenReferencesTest.class.getClassLoader());
+            if (ClassLoader.class.isAssignableFrom(type)) {
+                violations.add(className + " extends ClassLoader");
+            }
+        }
+
+        assertThat(violations).as("ClassLoader subclasses in the shipped runtime").isEmpty();
     }
 
     @Test
@@ -121,7 +172,12 @@ class ForbiddenReferencesTest {
 
     private static boolean isPermitted(Path classFile, String reference) {
         String name = classFile.getFileName().toString();
-        if (!"FabricLoaderFacade.class".equals(name) && !"ContainerPreLaunch.class".equals(name)) {
+        if ("java/lang/ClassLoader".equals(reference)) {
+            return MAY_NAME_CLASSLOADER.contains(name);
+        }
+        if (!"FabricLoaderFacade.class".equals(name)
+                && !"ContainerPreLaunch.class".equals(name)
+                && !"PayloadPreLaunch.class".equals(name)) {
             return false;
         }
         // Even the exempt classes may only use the public API, never internals.

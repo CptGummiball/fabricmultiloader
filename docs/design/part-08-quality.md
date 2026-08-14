@@ -183,9 +183,13 @@ alias — the loader would only have reported “requires examplemod-impl which 
 | 2021 | `platformFactory` threw an exception |
 | 2022 | `platformFactory` does not implement `PlatformFactory` |
 | 2023 | `platformFactory` returned `null` |
+| 2024 | `platformFactory` outside the payload's declared packages |
 | 2030 | Common entrypoint class not found |
 | 2031 | Common entrypoint threw an exception |
+| 2032 | Entrypoint outside the declared common packages |
+| 2033 | Entrypoint does not implement its phase interface |
 | 2040 | A payload lifecycle hook threw an exception |
+| 2050 | Runtime classes loaded from an unexpected source (warning) |
 | 2100 | Standalone payload without a container (info, dev/slim only) |
 | 2101 | Non-strict mode: the mod stays deactivated (warning) |
 | 2200 | Conditional mixin config unreadable (warning, fail-open) |
