@@ -13,12 +13,18 @@ examplemod-2.0.0-universal.jar
         └── runs on Minecraft 26.1+         (Java 25)
 ```
 
-> **Status: implementation started.** The technical design is complete (46 chapters, ~8,600 lines) and
-> implementation follows the [implementation plan](docs/design/part-12-implementation-plan.md).
-> Done: **M0 — repository scaffold** (step 1 of 21). Next: the `format` module (steps 2–5).
+> **Status: 9 of 21 implementation steps done.** The technical design is complete (46 chapters, ~8,600 lines)
+> and implementation follows the [implementation plan](docs/design/part-12-implementation-plan.md).
+> Complete: **M0** scaffold, **M1** `format`, **M2** `api`, **M3** `runtime`. Next: **M4** — the test harness
+> and the [loader conformance gate](#the-load-bearing-assumption--stated-openly).
+>
+> What runs today: a container manifest is read, exactly one payload is resolved against the live
+> environment, its platform is instantiated, and the full lifecycle executes through to `RUNNING` —
+> against a fake loader, in milliseconds. What does not exist yet is the Gradle toolchain that
+> *produces* a universal JAR (M5); until then the format is exercised from tests rather than from a build.
 >
 > Build requires **JDK 21** to run Gradle (8.11.1 does not run on JDK 24+); compilation targets are
-> set per module via `--release`. `./gradlew build` runs 40 unit tests and verifies the bytecode
+> set per module via `--release`. `./gradlew build` runs **579 unit tests** and verifies the bytecode
 > baseline of every module.
 
 ---
@@ -98,6 +104,8 @@ of the code is version-neutral, compiled once, and testable in milliseconds with
 
 ## The workflow
 
+*Target state — the Gradle toolchain behind these commands is milestone M5 and does not exist yet.*
+
 ```bash
 git clone https://github.com/CptGummiball/fabricmultiloader-template my-mod
 cd my-mod && ./bootstrap.sh          # set mod id, name, package
@@ -156,30 +164,33 @@ index across all parts.
 | 25 hard technical questions, answered | [part-13-hard-questions.md](docs/design/part-13-hard-questions.md) |
 | 45–46 Reality check, final summary | [part-14-reality-check.md](docs/design/part-14-reality-check.md) |
 
-## Planned modules
+## Modules
 
-| Module | Java | Responsibility |
-|---|---|---|
-| `fabricmultiloader-format` | 8 | Manifest model, JSON parser, version algebra, resolver, error codes — shared between runtime and build |
-| `fabricmultiloader-api` | 8 | Developer SPI: `ModContext`, `Platform`, `Registries`, `Networking`, `Commands`, `Events`, `Services`, `Capabilities` |
-| `fabricmultiloader-runtime` | 8 | Its own Fabric mod: bootstrap, lifecycle, diagnostics, version-stable adapters |
-| `fabricmultiloader-processor` | 8 | Annotation processor for `@UniversalEntrypoint` |
-| `fabricmultiloader-gradle` | 17 | Four Gradle plugins: `settings`, `common`, `version`, `universal` |
-| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR fixtures, loader conformance harness, server harness |
-| `example` | — | `UniversalExampleMod` for 1.20.1 / 1.21.1 / 1.21.4 |
+| Module | Java | Responsibility | Tests |
+|---|---|---|---|
+| `fabricmultiloader-format` | 8 | Manifest model, JSON parser, version algebra, resolver, error codes — shared between runtime and build | 397 |
+| `fabricmultiloader-api` | 8 | Developer SPI: `ModContext`, `Platform`, `Registries`, `Networking`, `Commands`, `Events`, `Services`, `Capabilities` | 36 |
+| `fabricmultiloader-runtime` | 8 | Its own Fabric mod: bootstrap, lifecycle, diagnostics, version-stable adapters | 131 |
+| `fabricmultiloader-processor` | 8 | Annotation processor for `@UniversalEntrypoint` | 3 |
+| `fabricmultiloader-gradle` | 17 | Four Gradle plugins: `settings`, `common`, `version`, `universal` — *scaffold only, M5* | 3 |
+| `fabricmultiloader-testing` | 17 | `FakeModContext`, JAR fixtures, loader conformance harness, server harness — *scaffold only, M4* | 9 |
+| `example` | — | `UniversalExampleMod` for 1.20.1 / 1.21.1 / 1.21.4 — *M6* | — |
 
 ## Roadmap
 
 | Milestone | Content | Effort | Status |
 |---|---|---|---|
 | M0 | Repository scaffold, convention plugins, CI skeleton | 1 d | ✅ done |
-| M1 | `format`: JSON, version algebra, manifest, resolver | 11 d | next |
-| M2 | `api`: complete developer SPI | 4 d | |
-| M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d | |
-| **M4** | **`testing` + loader conformance gate** | **7 d** | |
+| M1 | `format`: JSON, version algebra, manifest, resolver | 11 d | ✅ done |
+| M2 | `api`: complete developer SPI | 4 d | ✅ done |
+| M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d | ✅ done |
+| **M4** | **`testing` + loader conformance gate** | **7 d** | **next** |
 | M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d | |
 | M6 | Example mod, three versions, acceptance | 11 d | |
 | M7 | Documentation, template, release 1.0.0 | 11 d | |
+
+Per-step detail, including the corrections the design needed once it met a compiler, is in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## The load-bearing assumption — stated openly
 
