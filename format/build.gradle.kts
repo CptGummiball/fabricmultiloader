@@ -13,4 +13,10 @@ description = "Manifest model, JSON parser, version algebra and payload resolver
 dependencies {
     testImplementation(libs.bundles.testing)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // Test-only, never published or shipped. VersionPredicateEquivalenceTest checks this module's
+    // predicate implementation differentially against the real Fabric Loader one — the whole
+    // architecture assumes the two agree about which payload a constraint selects, so that
+    // agreement is verified rather than trusted.
+    testImplementation(libs.fabric.loader)
 }

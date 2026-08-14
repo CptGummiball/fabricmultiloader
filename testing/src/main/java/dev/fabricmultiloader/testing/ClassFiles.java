@@ -1,5 +1,6 @@
 package dev.fabricmultiloader.testing;
 
+import dev.fabricmultiloader.format.version.JavaVersions;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,9 +20,6 @@ public final class ClassFiles {
 
     /** {@code 0xCAFEBABE} as a signed 32-bit integer. */
     private static final int MAGIC = 0xCAFEBABE;
-
-    /** Class file major = Java feature version + 44 (Java 8 = 52, 21 = 65, 25 = 69). */
-    private static final int JAVA_MAJOR_OFFSET = 44;
 
     /** Reads the class file major version of a {@code .class} file. */
     public static int majorVersionOf(Path classFile) {
@@ -44,20 +42,20 @@ public final class ClassFiles {
         return data.readUnsignedShort();
     }
 
-    /** Converts a class file major version into its Java feature version (52 -> 8). */
+    /**
+     * Converts a class file major version into its Java feature version (52 -&gt; 8).
+     *
+     * <p>Delegates to {@code format}, which is the single source for this arithmetic: the
+     * validator, the runtime and the test harness must never disagree about what bytecode a
+     * payload contains.
+     */
     public static int javaVersionOf(int classFileMajor) {
-        if (classFileMajor < 45) {
-            throw new IllegalArgumentException("invalid class file major version: " + classFileMajor);
-        }
-        return classFileMajor - JAVA_MAJOR_OFFSET;
+        return JavaVersions.featureVersionOf(classFileMajor);
     }
 
-    /** Converts a Java feature version into its class file major version (8 -> 52). */
+    /** Converts a Java feature version into its class file major version (8 -&gt; 52). */
     public static int classFileMajorOf(int javaVersion) {
-        if (javaVersion < 1) {
-            throw new IllegalArgumentException("invalid Java version: " + javaVersion);
-        }
-        return javaVersion + JAVA_MAJOR_OFFSET;
+        return JavaVersions.classFileMajor(javaVersion);
     }
 
     private ClassFiles() {
