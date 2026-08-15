@@ -165,14 +165,30 @@ test coverage (target: 95 % of lines).
 
 | | |
 |---|---|
-| **Classes/files** | `testing`: `LoaderConformanceHarness`, `LoaderVersion`, `SyntheticContainer`, `ResolutionProbe`; a `conformanceTest` source set with the 8 test cases from chapter 32.4; `.github/workflows/conformance.yml` |
-| **Tests** | `NestedUnsatisfiableIsDropped`, `ExactlyOneSelected`, `ProvidesExclusivity`, `BreaksExclusivity`, `JavaDependencyEvaluated`, `EnvironmentEvaluated`, `RuntimeDeduplication`, `ContainerRangeError` — each against loaders 0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.x |
-| **DoD** | All 8 cases × 5 loader versions green; the CI workflow opens an issue automatically on failure; `docs/internals/loader-assumption.md` written |
+| **Classes/files** | `testing.conformance`: `LoaderConformanceHarness`, `LoaderVersion`, `SyntheticContainer`, `ResolutionProbe`; a `conformanceTest` source set with the 8 test cases from chapter 32.4; `.github/workflows/conformance.yml`; `docs/internals/loader-assumption.md` |
+| **Tests** | `nestedUnsatisfiableIsDropped`, `exactlyOneSelected`, `providesExclusivity`, `breaksExclusivity`, `javaDependencyEvaluated`, `environmentEvaluated`, `runtimeDeduplication`, `containerRangeError` — each against loaders 0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.3, 0.19.3 |
+| **DoD** | All 8 cases × 6 loader versions green; the CI workflow opens an issue automatically on failure; `docs/internals/loader-assumption.md` written |
 | **Depends on** | step 10 |
 | **Effort** | 4 days |
 
 > **This step is a gate.** If it fails, the architecture is refuted and the fallback path (slim JARs as the primary
 > product) must be evaluated before any further steps. That is why it sits **before** the Gradle plugin, not after.
+>
+> **Result: 48 of 48 green.** The assumption holds unchanged from 0.14.21 through 0.19.3, across the solver rewrite
+> between 0.14 and 0.15 and the candidate-type rename in 0.16. The matrix gained 0.19.3, which did not exist when
+> the plan was written; the loader API the harness drives turned out to be stable enough that spanning six lines
+> costs no more than spanning five.
+>
+> Two corrections the measurement forced, both recorded in `docs/internals/loader-assumption.md`:
+>
+> * **`environment` is not evaluated by the solver.** It is applied during *discovery* — `ModDiscoverer` skips a mod
+>   that does not load in the current environment and records it in the `envDisabledMods` map, which `ModResolver`
+>   merely receives. That is stronger than chapter 13.7 assumed (a client-only payload on a dedicated server never
+>   reaches the solver at all), but a harness that skipped the discovery step would have reported the opposite of
+>   the truth.
+> * **Nested candidates must be linked to their parent and passed flat.** `createPlain(…, nestedMods)` records the
+>   children, but the discoverer additionally calls `addParent` on each, and `resolve` receives roots and nested
+>   candidates together. An unlinked nested candidate is an orphan the solver never considers.
 
 ---
 

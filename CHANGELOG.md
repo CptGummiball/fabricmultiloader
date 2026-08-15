@@ -156,6 +156,22 @@ framework modules, with the container format and manifest schema versioned indep
     step 7 said it would. The runtime's own tests now consume the published harness, so a gap in it
     shows up here before it shows up in a mod project.
 
+* **Implementation step 11 — the loader conformance gate.** (`testing`) **This is the gate the whole
+  architecture had to pass, and it passed: 48 of 48.**
+  * `testing.conformance`: `LoaderConformanceHarness`, `LoaderVersion`, `SyntheticContainer`,
+    `ResolutionProbe`, a `conformanceTest` source set, and
+    [`docs/internals/loader-assumption.md`](docs/internals/loader-assumption.md).
+  * Six real Fabric Loader releases — 0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.3, 0.19.3 — each loaded
+    into its own `URLClassLoader` parented to the *platform* loader, so `ModResolver` can only come
+    from the jar under test rather than from whatever is on the test classpath. Eight properties
+    each: the load-bearing assumption itself, exactly-one selection, `provides` and `breaks`
+    exclusivity, `depends.java`, `environment`, runtime deduplication, and the container range error.
+  * The metadata fed to the solver is produced by `FabricModJsonWriter` — the same code the assembler
+    uses. A fixture with hand-tuned `depends` would have proven something about a jar nobody ships.
+  * `.github/workflows/conformance.yml`: nightly, on release tags, on manual dispatch, and on any pull
+    request touching the harness or the metadata derivation. A scheduled failure opens a labelled
+    issue, or comments on the open one, rather than only reddening a run nobody is watching.
+
 ### Changed
 
 * `Registries` gained a `default flush()`. The lifecycle requires deferred registrations to run
@@ -189,6 +205,16 @@ Recorded here because each was found by implementing the design, not by re-readi
   against Fabric API 0.92.2 and 0.114.0" definition of done is replaced by a stronger check that
   already existed: the runtime references no Fabric API, Minecraft or Mojang class at all, enforced
   on the bytecode of every class in the module.
+* **Chapter 32.4 — `environment` is not evaluated by the mod solver.** It is applied during *discovery*:
+  `ModDiscoverer` skips a mod that does not load in the current environment and records it in the
+  `envDisabledMods` map, which `ModResolver` then merely receives. That is *stronger* than chapter 13.7
+  assumed — a client-only payload on a dedicated server never reaches the solver at all — but a harness
+  that skipped the discovery step would have reported the opposite of the truth. Found by running the
+  gate, not by reading the loader.
+* **Chapter 32.4 — nested candidates must be linked to their parent.**
+  `ModCandidateImpl.createPlain(…, nestedMods)` records the children, but the discoverer additionally
+  calls `addParent` on each, and `ModResolver.resolve` receives the flattened set of roots *and* nested
+  candidates. An unlinked nested candidate is an orphan the solver never considers.
 * **Chapter 16.6** — the mixin plugin reaches the loader through `LoaderFacade` instead of
   `FabricLoader.getInstance()`, and `ConfigLocator` finds its config by asking the loader which mods
   declare which mixin packages rather than by guessing a classpath resource name. With several
@@ -222,7 +248,10 @@ Recorded here because each was found by implementing the design, not by re-readi
   the property that actually matters at this stage.
 * The `gradle-plugin` module is plain Java for now; `java-gradle-plugin` and Kotlin arrive with
   the first real plugin implementation in step 12.
-* Test count after step 10: **602** across `format` (397), `runtime` (131), `api` (36), `testing` (32),
+* Test count after step 11: **602** unit tests, plus **48** conformance checks in a separate task. The gate is
+  deliberately not wired into `check`: it resolves six loader distributions, nothing in this repository can break
+  it, and only a new Fabric Loader release can — so nightly is the schedule that matches the risk.
+* Unit tests are spread across `format` (397), `runtime` (131), `api` (36), `testing` (32),
   `processor` (3) and `gradle-plugin` (3). The distribution is deliberate — the version algebra, the
   resolver and the disjointness proof are where a defect would be silent, so that is where the tests
   are.
@@ -231,7 +260,7 @@ Recorded here because each was found by implementing the design, not by re-readi
   the build's own JDK and consume `testing`, which is Java 17. `verifyBytecodeBaseline` scans
   `compileJava`'s output only, so the guarantee that matters is unchanged.
 * No release has been cut. Nothing here has a version number yet; `[Unreleased]` covers implementation
-  steps 1–10 and will be split into a real release entry when 1.0.0 ships (step 21).
+  steps 1–11 and will be split into a real release entry when 1.0.0 ships (step 21).
 
 ## [0.0.0] — design phase
 

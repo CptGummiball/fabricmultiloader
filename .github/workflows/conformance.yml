@@ -1,0 +1,117 @@
+name: conformance
+
+# The gate for the load-bearing assumption (docs/internals/loader-assumption.md).
+#
+# Nightly rather than per-commit, because it resolves six Fabric Loader
+# distributions and nothing in this repository can break it — only a new Fabric
+# Loader release can. Nightly is therefore the schedule that matches the risk:
+# a loader that changed this behaviour is found within a day of its release,
+# which is before any user reaches it.
+
+on:
+  schedule:
+    # 04:17 UTC — off the hour, so it does not queue behind everyone else's
+    # midnight cron.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      # A change to the harness, the metadata derivation it feeds the solver, or
+      # the loader matrix is the one kind of commit that can break this.
+      - "testing/**"
+      - "format/src/main/java/dev/fabricmultiloader/format/manifest/**"
+      - ".github/workflows/conformance.yml"
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  conformance:
+    name: loader conformance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # Gradle 8.11.1 does not run on JDK 24+; the modules set their own
+          # targets via --release.
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+
+      - name: Resolve the loader matrix
+        run: ./gradlew :testing:writeLoaderIndex --stacktrace
+
+      - name: Run the conformance gate
+        id: gate
+        run: ./gradlew :testing:conformanceTest --stacktrace
+
+      - name: Publish the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report
+          path: testing/build/reports/tests/conformanceTest/
+          retention-days: 30
+
+      # A failure here means either a new Fabric Loader changed the behaviour the
+      # architecture rests on, or the harness can no longer drive it. Both are
+      # things a human has to look at within a day, so a scheduled failure opens
+      # an issue rather than only reddening a run nobody is watching.
+      - name: Open an issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Loader conformance gate failed";
+            const body = [
+              "The nightly conformance run failed.",
+              "",
+              "**This blocks releases.** Either a Fabric Loader release changed the behaviour",
+              "FabricMultiLoader rests on, or the harness can no longer drive its internals.",
+              "The two are distinguishable: a `ModResolutionException` naming a nested payload is",
+              "the assumption; a `NoSuchMethodException` or `ClassNotFoundException` is the harness.",
+              "",
+              "See [docs/internals/loader-assumption.md](../blob/main/docs/internals/loader-assumption.md)",
+              "section 5 for what to do next.",
+              "",
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join("\n");
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "conformance",
+            });
+
+            // One issue per outage, updated, rather than one per night.
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still failing as of ${new Date().toISOString().slice(0, 10)}.\n\n${body}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["conformance", "blocker"],
+              });
+            }

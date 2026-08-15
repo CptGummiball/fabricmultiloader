@@ -13,19 +13,20 @@ examplemod-2.0.0-universal.jar
         └── runs on Minecraft 26.1+         (Java 25)
 ```
 
-> **Status: 10 of 21 implementation steps done.** The technical design is complete (46 chapters, ~8,600 lines)
-> and implementation follows the [implementation plan](docs/design/part-12-implementation-plan.md).
-> Complete: **M0** scaffold, **M1** `format`, **M2** `api`, **M3** `runtime`, and the test harness of **M4**.
-> Next: the [loader conformance gate](#the-load-bearing-assumption--stated-openly), step 11.
+> **Status: 11 of 21 implementation steps done — the load-bearing assumption is now measured, not assumed.**
+> The technical design is complete (46 chapters, ~8,600 lines) and implementation follows the
+> [implementation plan](docs/design/part-12-implementation-plan.md).
+> Complete: **M0** scaffold, **M1** `format`, **M2** `api`, **M3** `runtime`, **M4** test harness and
+> [conformance gate](#the-load-bearing-assumption--stated-openly). Next: **M5**, the Gradle toolchain.
 >
 > What runs today: a container manifest is read, exactly one payload is resolved against the live
 > environment, its platform is instantiated, and the full lifecycle executes through to `RUNNING` —
 > against a fake loader, in milliseconds. What does not exist yet is the Gradle toolchain that
 > *produces* a universal JAR (M5); until then the format is exercised from tests rather than from a build.
 >
-> Build requires **JDK 21** to run Gradle (8.11.1 does not run on JDK 24+); compilation targets are
-> set per module via `--release`. `./gradlew build` runs **602 unit tests** and verifies the bytecode
-> baseline of every module.
+> Build requires **JDK 21** to run Gradle (8.11.1 does not run on JDK 24+); compilation targets are set per
+> module via `--release`. `./gradlew build` runs **602 unit tests** and verifies the bytecode baseline of every
+> module; `./gradlew :testing:conformanceTest` runs **48 more against six real Fabric Loader releases**.
 
 ---
 
@@ -184,8 +185,8 @@ index across all parts.
 | M1 | `format`: JSON, version algebra, manifest, resolver | 11 d | ✅ done |
 | M2 | `api`: complete developer SPI | 4 d | ✅ done |
 | M3 | `runtime`: bootstrap, context, lifecycle, mixin plugin | 12 d | ✅ done |
-| **M4** | **`testing` + loader conformance gate** | **7 d** | **harness done, gate next** |
-| M5 | Gradle plugin: matrix, pipeline, assembler, validator | 30 d | |
+| M4 | `testing` + loader conformance gate | 7 d | ✅ done — gate green |
+| **M5** | **Gradle plugin: matrix, pipeline, assembler, validator** | **30 d** | **next** |
 | M6 | Example mod, three versions, acceptance | 11 d | |
 | M7 | Documentation, template, release 1.0.0 | 11 d | |
 
@@ -199,14 +200,22 @@ The entire architecture rests on **one** property of Fabric Loader that is not f
 > A nested mod candidate whose `depends` cannot be satisfied, and which no loaded mod hard-depends on, is
 > **not selected** by `ModSolver` — instead of causing a hard resolution failure.
 
-This is the behaviour of loader lines 0.14.x–0.17.x and the reason JiJ libraries with narrow MC ranges work
-throughout the ecosystem. Because the foundation rests on it:
+**It is measured, not argued.** `./gradlew :testing:conformanceTest` loads six real Fabric Loader releases —
+0.14.21, 0.15.11, 0.16.9, 0.16.14, 0.17.3 and 0.19.3 — each into its own isolated class loader, and drives each
+one's actual `ModResolver` over synthetic universal mods whose metadata is produced by the same code the assembler
+uses. Eight properties, six loaders, **48 of 48 green**: the assumption holds unchanged across the solver rewrite
+between 0.14 and 0.15 and the candidate-type rename in 0.16.
+
+Because the foundation rests on it:
 
 * it is derived from the loader start sequence in [chapter 5](docs/design/part-01-feasibility.md),
-* it is guarded by a **nightly conformance test across five loader versions** that automatically opens an issue
-  on failure and blocks releases,
-* the conformance gate sits **before** the 30-day Gradle plugin work in the implementation plan, not after,
-* and two fallback paths are prepared ([chapter 41](docs/design/part-10-nfr.md)).
+* it is guarded by a **nightly conformance run** that opens an issue automatically on failure and blocks releases,
+* the gate sits **before** the 30-day Gradle plugin work in the implementation plan, not after — and it has now
+  passed, which is what unblocks that work,
+* and the fallback is prepared should a future loader change it ([chapter 41](docs/design/part-10-nfr.md)).
+
+The full account — what is checked, what the measurement corrected about the design, and what to do if it ever goes
+red — is in [docs/internals/loader-assumption.md](docs/internals/loader-assumption.md).
 
 There is no second assumption of this weight in the design.
 

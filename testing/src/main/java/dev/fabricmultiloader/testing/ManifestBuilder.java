@@ -37,6 +37,7 @@ public final class ManifestBuilder {
     private SemVer runtimeVersion = SemVer.of(1, 0, 0);
     private boolean strict = true;
     private boolean verifyIntegrity = true;
+    private boolean mutualBreaks = true;
     private final EntrypointSet.Builder entrypoints = EntrypointSet.builder();
     private final List<Payload> payloads = new ArrayList<Payload>();
 
@@ -84,6 +85,18 @@ public final class ManifestBuilder {
     /** Sets whether payload hashes are verified at startup. */
     public ManifestBuilder verifyIntegrity(boolean value) {
         this.verifyIntegrity = value;
+        return this;
+    }
+
+    /**
+     * Drops the mutual {@code breaks} between payloads.
+     *
+     * <p>Never right for a real container — exclusivity is one of the four guarantees that make
+     * "exactly one payload" hold. It exists so a conformance test can isolate the other three: with
+     * breaks in place, a test of {@code provides} exclusivity would pass for the wrong reason.
+     */
+    public ManifestBuilder withoutMutualBreaks() {
+        this.mutualBreaks = false;
         return this;
     }
 
@@ -191,6 +204,7 @@ public final class ManifestBuilder {
         private int priority;
         private String platformFactory;
         private String ownPackage;
+        private String[] provides;
         private final List<String> capabilities = new ArrayList<String>();
 
         Payload(String payloadId, String minecraftRange, int javaMajor) {
@@ -235,6 +249,12 @@ public final class ManifestBuilder {
             return this;
         }
 
+        /** Overrides the alias ids this payload provides. */
+        public Payload provides(String... values) {
+            this.provides = values;
+            return this;
+        }
+
         /** Declares capabilities. */
         public Payload capabilities(String... values) {
             for (String value : values) {
@@ -271,7 +291,8 @@ public final class ManifestBuilder {
                     .platformFactory(factory)
                     .packages(ownedPackage)
                     .requires(requires.build())
-                    .provides(parent.modId + "-impl")
+                    .provides(provides == null
+                            ? new String[] {parent.modId + "-impl"} : provides)
                     .mappings(new MappingsInfo(MappingsInfo.INTERMEDIARY, "yarn", ""));
 
             for (String capability : capabilities) {
@@ -280,9 +301,11 @@ public final class ManifestBuilder {
             // Mutual exclusion, exactly as the real generator writes it: every other payload of the
             // same container. Without it two payloads could be selected together on an overlapping
             // range, which is the failure the whole disjointness argument exists to prevent.
-            for (Payload other : parent.payloads) {
-                if (other != this) {
-                    descriptor.breaks(parent.modId + "-" + other.payloadId);
+            if (parent.mutualBreaks) {
+                for (Payload other : parent.payloads) {
+                    if (other != this) {
+                        descriptor.breaks(parent.modId + "-" + other.payloadId);
+                    }
                 }
             }
             return descriptor.build();

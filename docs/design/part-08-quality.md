@@ -560,8 +560,15 @@ manually — exactly the desired early warning system.
 | `RuntimeDeduplication` | Two containers with runtime 1.0.0 and 1.1.0 ⇒ only 1.1.0 loads |
 | `ContainerRangeError` | MC outside the union ⇒ a loader error with the ranges in its text |
 
-Matrix: loaders `0.14.21`, `0.15.11`, `0.16.9`, `0.16.14`, `0.17.x` (the newest patch of each) — nightly in CI
-(`schedule`) and on every release. A new loader is therefore tested **before** users are.
+Matrix: loaders `0.14.21`, `0.15.11`, `0.16.9`, `0.16.14`, `0.17.3`, `0.19.3` (the newest patch of each line) —
+nightly in CI (`schedule`), on every release tag, and on any pull request touching the harness or the metadata
+derivation it feeds the solver. A new loader is therefore tested **before** users are.
+
+Implemented in step 11 and green on all six lines. Two things the measurement corrected: `environment` is applied
+during *discovery* rather than by the solver, and nested candidates must be linked to their parent via `addParent`
+and handed to `resolve` flattened alongside the roots. Both are recorded in
+[`docs/internals/loader-assumption.md`](../internals/loader-assumption.md), which also states what happens if the
+gate ever goes red.
 
 ## 32.5 T4 — integration tests with real Minecraft servers
 
